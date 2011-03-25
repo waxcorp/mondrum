@@ -22,8 +22,7 @@ public class Monome {
       for (0 => int b; b < y; b++) {
         new MonomeButton @=> buttons[a][b];
         buttons[a][b].init(a, b, this);
-        spork ~ buttons[a][b].glow(700::ms, 3);
-        75::ms => now;
+        spork ~ buttons[a][b].glow(500::ms, 3, (3*a+b*b)*250::ms);
       }
     }
     me.yield();
@@ -59,9 +58,10 @@ class MonomeButton {
     (Std.abs(level) - 1) => this.m.xmit.addInt => this.level;
   }
 
-  fun void glow(dur ramp_dur, int iterations) {
+  fun void glow(dur ramp_dur, int iters, dur pause) {
+    pause => now;
     // TODO(josh): figure out how to do "and" < -1 for infinite glow
-    for (iterations => int i; i > 0; i--) {
+    for (0 => int i; i < iters; i++) {
       for (1 => int x; x < (2*(this.brightness_levels)); x++) {
         (x $ float) / 100 => float ratio;
         ramp_dur * (1 / this.brightness_levels $ float) => now;
