@@ -17,11 +17,11 @@ public class Monome {
   }
 
   fun void setup_buttons(int x, int y) {
-    MonomeButton buttons[8][8];
-    for (0 => int x; x < 8; x++) {
-      for (0 => int y; y < 8; y++) {
-        new MonomeButton @=> buttons[x][y];
-        buttons[x][y].init(x, y, this);
+    MonomeButton buttons[x][y];
+    for (0 => int a; a < x; a++) {
+      for (0 => int b; b < y; b++) {
+        new MonomeButton @=> buttons[a][b];
+        buttons[a][b].init(a, b, this, 50::ms);
       }
     }
     buttons @=> this.buttons;
