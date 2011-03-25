@@ -21,9 +21,12 @@ public class Monome {
     for (0 => int a; a < x; a++) {
       for (0 => int b; b < y; b++) {
         new MonomeButton @=> buttons[a][b];
-        buttons[a][b].init(a, b, this, 50::ms);
+        buttons[a][b].init(a, b, this);
+        spork ~ buttons[a][b].glow(700::ms, 3);
+        75::ms => now;
       }
     }
+    me.yield();
     buttons @=> this.buttons;
   }
 }
@@ -35,11 +38,10 @@ class MonomeButton {
   int y;
   Monome m;
 
-  fun void init(int x, int y, Monome m, dur init_glow_duration) {
+  fun void init(int x, int y, Monome m) {
     x => this.x;
     y => this.y;
     m @=> this.m;
-    glow(init_glow_duration, 1);
   }
 
   fun void start_xmit_xy(string msg) {
@@ -73,3 +75,4 @@ class MonomeButton {
 // each button in succession when initialized.  Eg:
 //   Monome m;
 //   m.init("localhost", "/monome", 14457, 8000, 64);
+//   while (1::second => now);
