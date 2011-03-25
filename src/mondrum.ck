@@ -70,9 +70,3 @@ class MonomeButton {
     }
   }
 }
-
-// Buttons won't run in their own shreds.  Currently it just glows
-// each button in succession when initialized.  Eg:
-//   Monome m;
-//   m.init("localhost", "/monome", 14457, 8000, 64);
-//   while (1::second => now);
