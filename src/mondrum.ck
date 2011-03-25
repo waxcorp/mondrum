@@ -35,11 +35,11 @@ class MonomeButton {
   int y;
   Monome m;
 
-  fun void init(int x, int y, Monome m) {
+  fun void init(int x, int y, Monome m, dur init_glow_duration) {
     x => this.x;
     y => this.y;
     m @=> this.m;
-    glow(300::ms, 1);
+    glow(init_glow_duration, 1);
   }
 
   fun void start_xmit_xy(string msg) {
