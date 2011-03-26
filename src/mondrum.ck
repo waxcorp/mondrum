@@ -3,7 +3,6 @@ public class Monome {
   int model;
   string xmit_prefix;
   OscRecv recv;
-  OscEvent key;
   MonomeButton buttons[][];
 
   fun void init(string xmit_host, string xmit_prefix, int xmit_port,
@@ -13,28 +12,9 @@ public class Monome {
     this.xmit.setHost(xmit_host, xmit_port);
     recv_port => this.recv.port;
     this.recv.listen();
-    this.recv.event(this.xmit_prefix + "/grid/key iii") @=> OscEvent key;
-    key @=> this.key;
     this.set_all_buttons(0);
 
     if (model == 64) setup_buttons(8, 8);
-    //this.set_level("set", 0, 0, 15);
-    spork ~ key_event_manager();
-  }
-
-  fun void key_event_manager() {
-    while (true) {
-      this.key => now;
-      until (this.key.nextMsg() == 0) {
-        this.key.getInt() => int x;
-        this.key.getInt() => int y;
-        this.key.getInt() => int s;
-        0 => int level;
-        if (s == 1) 15 => level;
-        // this.buttons[x][y].set_level(level);
-        spork ~ this.buttons[x][y].glow(200::ms, 5, 0::samp);
-      }
-    }
   }
 
   fun void set_all_buttons(int state) {
@@ -69,15 +49,35 @@ public class Monome {
 
 class MonomeButton {
   int brightness_levels[15];
-  1 => int level;
+  0 => int level;
   int x;
   int y;
   Monome m;
+  OscEvent key;
 
   fun void init(int x, int y, Monome m) {
     x => this.x;
     y => this.y;
     m @=> this.m;
+    this.m.recv.event(this.m.xmit_prefix + "/grid/key iii") @=> this.key;
+    spork ~ this.key_event_manager();
+  }
+
+  fun void key_event_manager() {
+    while (true) {
+      this.key => now;
+      until (this.key.nextMsg() == 0) {
+        this.key.getInt() => int x_pos;
+        this.key.getInt() => int y_pos;
+        this.key.getInt() => int s;
+        if (this.x != x_pos) break;
+        if (this.y != y_pos) break;
+
+        if (s == 0) 0 => this.level;
+        if (s == 1) 15 => this.level;
+        this.set_level(level);
+      }
+    }
   }
 
   fun void start_xmit_xy(string msg) {
