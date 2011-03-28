@@ -1,4 +1,24 @@
-public class Monome {
+public class MonDrum {
+  Monome m;
+  SampleEngine se;
+
+  fun void init(string monome_xmit_host,
+                string monome_xmit_prefix,
+                int monome_xmit_port,
+                int monome_recv_port,
+                int monome_model,
+                string sampeng_xmit_prefix,
+                string sampeng_xmit_host,
+                int sampeng_xmit_port,
+                int sampeng_recv_port) {
+    this.m.init(monome_xmit_host, monome_xmit_prefix, monome_xmit_port,
+                monome_recv_port, monome_model);
+    this.se.init(this.m, sampeng_xmit_prefix, sampeng_xmit_host,
+                 sampeng_xmit_port, sampeng_recv_port);
+  }
+}
+
+class Monome {
   OscSend xmit;
   int model;
   string xmit_prefix;
@@ -6,7 +26,7 @@ public class Monome {
   MonomeButton buttons[][];
 
   fun void init(string xmit_host, string xmit_prefix, int xmit_port,
-    int recv_port, int model) {
+                int recv_port, int model) {
     model => this.model;
     xmit_prefix => this.xmit_prefix;
     this.xmit.setHost(xmit_host, xmit_port);
@@ -39,7 +59,7 @@ public class Monome {
       for (0 => int b; b < y; b++) {
         new MonomeButton @=> buttons[a][b];
         buttons[a][b].init(a, b, this);
-        //spork ~ buttons[a][b].glow((a*b*50::ms/5), 3, (3*a+b*b)*250::ms);
+        spork ~ buttons[a][b].glow((a*b*50::ms/5), 3, (3*a+b*b)*250::ms);
       }
     }
     me.yield();
@@ -54,8 +74,9 @@ class MonomeButton {
   int y;
   Monome m;
   OscEvent key;
+  string attrs[];
 
-  fun void init(int x, int y, Monome m) {
+  fun void init(int y, int x, Monome m) {
     x => this.x;
     y => this.y;
     m @=> this.m;
@@ -106,5 +127,27 @@ class MonomeButton {
         set_level(x);
       }
     }
+  }
+}
+
+class SampleEngine {
+  Monome m;
+  string xmit_prefix;
+  string xmit_host;
+  int xmit_port;
+  OscSend xmit;
+  OscRecv recv;
+
+  fun void init(Monome m, string xmit_prefix, string xmit_host, int xmit_port,
+                int recv_port) {
+    m @=> this.m;
+    xmit_prefix => this.xmit_prefix;
+    this.xmit.setHost(xmit_host, xmit_port);
+    recv_port => this.recv.port;
+    this.recv.listen();
+  }
+
+  fun void read_matrix() {
+    this.m.buttons[0][0].set_level(15);
   }
 }
