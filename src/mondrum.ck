@@ -1,6 +1,14 @@
-public class MonDrum {
+class Instrument {
+}
+
+class SequencerEvent extends Event {
+  float loop_percent;
+}
+
+public class MonDrum extends Instrument {
   Monome m;
   SampleEngine se;
+  Sequencer s;
 
   fun void init(string monome_xmit_host,
                 string monome_xmit_prefix,
@@ -10,11 +18,14 @@ public class MonDrum {
                 string sampeng_xmit_prefix,
                 string sampeng_xmit_host,
                 int sampeng_xmit_port,
-                int sampeng_recv_port) {
+                int sampeng_recv_port,
+                int sequencer_bpm,
+                int sequencer_bars) {
     this.m.init(monome_xmit_host, monome_xmit_prefix, monome_xmit_port,
                 monome_recv_port, monome_model);
     this.se.init(this.m, sampeng_xmit_prefix, sampeng_xmit_host,
                  sampeng_xmit_port, sampeng_recv_port);
+    this.s.init(sequencer_bpm, sequencer_bars);
   }
 }
 
@@ -149,5 +160,61 @@ class SampleEngine {
 
   fun void read_matrix() {
     this.m.buttons[0][0].set_level(15);
+  }
+}
+
+class Sequencer {
+  static float bpm;
+  static int bars;
+  4 => static int beats_per_bar;
+  static SequencerEvent sequencer_events[];
+  100 => static int events_per_bar;
+  int start_watchdog_shred_id;
+  Event control_start;
+  Event control_stop;
+
+  fun void init(float bpm, int bars) {
+    (events_per_bar * bars) => int total_events;
+    SequencerEvent seq_evs[total_events];
+
+    for (0 => int i; i < total_events; i++) {
+      (i $ float) / (total_events $ float) => seq_evs[i].loop_percent;
+    }
+
+    seq_evs @=> this.sequencer_events;
+    bpm => this.bpm;
+    bars => this.bars;
+
+    spork ~ start_watchdog();
+    spork ~ stop_watchdog();
+
+    me.yield();
+  }
+
+  fun void start_watchdog() {
+    me.id() => this.start_watchdog_shred_id;
+    while (1) {
+      this.control_start => now;
+      60::second / this.bpm => dur beat_dur;
+      this.bars * this.beats_per_bar => int beats_in_loop;
+      beat_dur * beats_in_loop => dur loop_dur;
+      loop_dur / this.sequencer_events.cap() => dur step_dur;
+
+      while (1) {
+        for (0 => int i; i < this.sequencer_events.cap(); i++) {
+          this.sequencer_events[i].broadcast();
+          if ((i % 25) == 0) <<< i >>>;
+          step_dur => now;
+        }
+      }
+    }
+  }
+
+  fun void stop_watchdog() {
+    while (1) {
+      this.control_stop => now;
+      Machine.remove(this.start_watchdog_shred_id);
+      start_watchdog();
+    }
   }
 }
