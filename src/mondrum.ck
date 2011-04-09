@@ -198,10 +198,10 @@ class Sequencer {
   }
 
   fun void pause_play() {
-    if (paused) {
-      false => paused;
+    if (this.paused) {
+      false => this.paused;
     } else {
-      true => paused;
+      true => this.paused;
     }
     pause_play_event.broadcast();
   }
@@ -217,7 +217,7 @@ class Sequencer {
 
       while (1) {
         for (0 => int i; i < this.sequencer_events.cap(); i++) {
-          if (paused) pause_play_event => now;
+          if (this.paused) pause_play_event => now;
           this.sequencer_events[i].broadcast();
           if ((i % 5) == 0) <<< i >>>;
           this.step_dur => now;
