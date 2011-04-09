@@ -3,6 +3,7 @@ class Instrument {
 
 class SequencerEvent extends Event {
   float loop_percent;
+  int id;
 }
 
 public class MonDrum extends Instrument {
@@ -164,14 +165,18 @@ class SampleEngine {
 }
 
 class Sequencer {
-  static float bpm;
-  static int bars;
-  4 => static int beats_per_bar;
-  static SequencerEvent sequencer_events[];
-  100 => static int events_per_bar;
+  float bpm;
+  int bars;
+  4 => int beats_per_bar;
+  SequencerEvent sequencer_events[];
+  100 => int events_per_bar;
   int start_watchdog_shred_id;
   Event control_start;
   Event control_stop;
+  time event_start_time;
+  dur step_dur;
+  Event pause_play_event;
+  false => int paused;
 
   fun void init(float bpm, int bars) {
     (events_per_bar * bars) => int total_events;
@@ -179,6 +184,7 @@ class Sequencer {
 
     for (0 => int i; i < total_events; i++) {
       (i $ float) / (total_events $ float) => seq_evs[i].loop_percent;
+      i => seq_evs[i].id;
     }
 
     seq_evs @=> this.sequencer_events;
@@ -191,6 +197,15 @@ class Sequencer {
     me.yield();
   }
 
+  fun void pause_play() {
+    if (paused) {
+      false => paused;
+    } else {
+      true => paused;
+    }
+    pause_play_event.broadcast();
+  }
+
   fun void start_watchdog() {
     me.id() => this.start_watchdog_shred_id;
     while (1) {
@@ -198,13 +213,14 @@ class Sequencer {
       60::second / this.bpm => dur beat_dur;
       this.bars * this.beats_per_bar => int beats_in_loop;
       beat_dur * beats_in_loop => dur loop_dur;
-      loop_dur / this.sequencer_events.cap() => dur step_dur;
+      loop_dur / this.sequencer_events.cap() => this.step_dur;
 
       while (1) {
         for (0 => int i; i < this.sequencer_events.cap(); i++) {
+          if (paused) pause_play_event => now;
           this.sequencer_events[i].broadcast();
-          if ((i % 25) == 0) <<< i >>>;
-          step_dur => now;
+          if ((i % 5) == 0) <<< i >>>;
+          this.step_dur => now;
         }
       }
     }

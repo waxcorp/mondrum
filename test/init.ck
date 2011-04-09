@@ -8,4 +8,9 @@ md.s.control_stop.broadcast();
 2::second => now;
 md.s.control_start.broadcast();
 
+2::second => now;
+md.s.pause_play();
+1::second => now;
+md.s.pause_play();
+
 while (1::second => now);
