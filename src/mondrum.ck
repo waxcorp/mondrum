@@ -19,9 +19,9 @@ class MonDrumProgram {
 }
 
 public class MonDrum extends Instrument {
-  Monome m;
-  SampleEngine se;
-  Sequencer s;
+  Monome monome;
+  SampleEngine sample_engine;
+  Sequencer sequencer;
 
   fun void init(string monome_xmit_host,
                 string monome_xmit_prefix,
@@ -34,11 +34,11 @@ public class MonDrum extends Instrument {
                 int sampeng_recv_port,
                 int sequencer_bpm,
                 int sequencer_bars) {
-    this.m.init(monome_xmit_host, monome_xmit_prefix, monome_xmit_port,
-                monome_recv_port, monome_model);
-    this.se.init(this.m, sampeng_xmit_prefix, sampeng_xmit_host,
-                 sampeng_xmit_port, sampeng_recv_port);
-    this.s.init(sequencer_bpm, sequencer_bars);
+    this.monome.init(monome_xmit_host, monome_xmit_prefix, monome_xmit_port,
+                     monome_recv_port, monome_model);
+    this.sample_engine.init(this.monome, sampeng_xmit_prefix, sampeng_xmit_host,
+                            sampeng_xmit_port, sampeng_recv_port);
+    this.sequencer.init(sequencer_bpm, sequencer_bars);
   }
 }
 
@@ -182,13 +182,14 @@ class Sequencer {
   4 => int beats_per_bar;
   SequencerEvent sequencer_events[];
   100 => int events_per_bar;
-  int start_watchdog_shred_id;
-  Event control_start;
-  Event control_stop;
+  int main_loop_shred_id;
+  Event control_start_event;
+  Event control_stop_event;
   time event_start_time;
+  dur loop_dur;
   dur step_dur;
-  Event pause_play_event;
-  false => int paused;
+  Event playpause_event;
+  "stopped" => string state;
 
   fun void init(float bpm, int bars) {
     (events_per_bar * bars) => int total_events;
@@ -203,46 +204,69 @@ class Sequencer {
     bpm => this.bpm;
     bars => this.bars;
 
-    spork ~ start_watchdog();
-    spork ~ stop_watchdog();
-
+    calc_durs();
+    spork ~ playstart_loop();
     me.yield();
   }
 
-  fun void pause_play() {
-    if (this.paused) {
-      false => this.paused;
-    } else {
-      true => this.paused;
+  fun void playpause() {
+    if (this.state == "paused") {
+      "playing" => this.state;
+    } else if (this.state == "playing") {
+      "paused" => this.state;
+    } else if (this.state == "stopped") {
+      this.control_start_event.broadcast();
+      "playing" => this.state;
     }
-    pause_play_event.broadcast();
+
+    playpause_event.broadcast();
   }
 
-  fun void start_watchdog() {
-    me.id() => this.start_watchdog_shred_id;
-    while (1) {
-      this.control_start => now;
-      60::second / this.bpm => dur beat_dur;
-      this.bars * this.beats_per_bar => int beats_in_loop;
-      beat_dur * beats_in_loop => dur loop_dur;
-      loop_dur / this.sequencer_events.cap() => this.step_dur;
+  fun void calc_durs() {
+    60::second / this.bpm => dur beat_dur;
+    this.bars * this.beats_per_bar => int beats_in_loop;
+    beat_dur * beats_in_loop => this.loop_dur;
+    loop_dur / this.sequencer_events.cap() => this.step_dur;
+  }
 
-      while (1) {
-        for (0 => int i; i < this.sequencer_events.cap(); i++) {
-          if (this.paused) pause_play_event => now;
-          this.sequencer_events[i].broadcast();
-          if ((i % 5) == 0) <<< i >>>;
-          this.step_dur => now;
-        }
+  fun void playstart_loop() {
+    while (1) {
+      this.control_start_event => now;
+
+      (spork ~ main_loop()).id() => this.main_loop_shred_id;
+
+      this.control_stop_event => now;
+      Machine.remove(this.main_loop_shred_id);
+    }
+  }
+
+  fun void main_loop() {
+    while (1) {
+      for (0 => int i; i < this.sequencer_events.cap(); i++) {
+        if (this.state == "paused")  playpause_event => now;
+        this.sequencer_events[i].broadcast();
+        if ((i % 5) == 0) <<< i >>>;
+        this.step_dur => now;
       }
     }
   }
 
-  fun void stop_watchdog() {
-    while (1) {
-      this.control_stop => now;
-      Machine.remove(this.start_watchdog_shred_id);
-      start_watchdog();
+  // like MPC we pause if we're currently playing and stop/reset if not.
+  fun void stop() {
+    if (this.state == "playing") {
+      this.playpause();
+    } else {
+      this.control_stop_event.broadcast();
+      "stopped" => this.state;
     }
+  }
+
+  fun void play() {
+    if (this.state != "playing") this.playpause();
+  }
+
+  fun void playstart() {
+    this.stop();
+    this.control_start_event.broadcast();
   }
 }
