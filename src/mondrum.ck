@@ -6,6 +6,18 @@ class SequencerEvent extends Event {
   int id;
 }
 
+class MonDrumSequence {
+  fun void init(int foo) {
+    <<< foo >>>;
+  }
+}
+
+class MonDrumProgram {
+  fun void init(int foo) {
+    <<< foo >>>;
+  }
+}
+
 public class MonDrum extends Instrument {
   Monome m;
   SampleEngine se;
