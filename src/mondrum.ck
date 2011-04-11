@@ -49,8 +49,15 @@ class KbController extends Controller {
 
   fun int[] control_signal() {
     this.kb_hit => now;
-    this.kb_hit.getchar() => int sig;
-    return [sig];
+
+    int sig[256];
+    0 => int i;
+    while (kb_hit.more()) {
+      this.kb_hit.getchar() => sig[i];
+      i++;
+    }
+
+    return sig;
   }
 }
 
