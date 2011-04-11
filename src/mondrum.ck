@@ -26,6 +26,7 @@ class Controller extends Instrument {
 }
 
 class KbController extends Controller {
+  // TODO(josh): see about http://smelt.cs.princeton.edu/code/keyboard/kb.ck
   int sig;
   KBHit kb_hit;
 
