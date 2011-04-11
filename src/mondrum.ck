@@ -13,9 +13,9 @@ class SequencerControlInstrument extends Instrument {
   fun void receive(int signals[]) {
     if (signals[0] == 112) {
       sequencer.playstart();
-    } else if (signals[0] == 105) {
+    } else if (signals[0] == 111) {
       sequencer.play();
-    } else if (signals[0] == 117) {
+    } else if (signals[0] == 105) {
       sequencer.stop();
     }
   }
