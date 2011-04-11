@@ -1,3 +1,6 @@
 [submodule "src/lib/lick"]
 	path = src/lib/lick
 	url = https://github.com/heuermh/lick.git
+[submodule "submodules/chuck_performance_setup"]
+	path = submodules/chuck_performance_setup
+	url = https://github.com/rdpoor/chuck_performance_setup.git
