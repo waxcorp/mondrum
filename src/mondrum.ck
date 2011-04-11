@@ -338,6 +338,8 @@ class Sequencer {
   fun void playstart() {
     <<< "playstart" >>>;
     this.stop();
+    this.stop();
+    me.yield();
     this.control_start_event.broadcast();
   }
 }
