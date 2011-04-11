@@ -3,30 +3,12 @@ class Instrument {
   }
 }
 
-class SequencerControlInstrument extends Instrument {
-  Sequencer sequencer;
-
-  fun void init(Sequencer sequencer) {
-    sequencer @=> this.sequencer;
-  }
-
-  fun void receive(int signals[]) {
-    if (signals[0] == 112) {
-      sequencer.playstart();
-    } else if (signals[0] == 111) {
-      sequencer.play();
-    } else if (signals[0] == 105) {
-      sequencer.stop();
-    }
-  }
-}
-
-class Controller {
-  int shred_id;
+class Controller extends Instrument {
+  int controller_shred_id;
   Instrument instruments[];
 
-  fun void main_loop() {
-    (spork ~ this.control_loop()).id() => this.shred_id;
+  fun void controller_main_loop() {
+    (spork ~ this.control_loop()).id() => this.controller_shred_id;
     me.yield();
   }
 
@@ -61,16 +43,6 @@ class KbController extends Controller {
   }
 }
 
-class SequencerKbController extends KbController {
-  fun void init(SequencerControlInstrument s[]) {
-    // here comes the pain -- can't reassign member vars :(
-    Instrument instruments_placeholder[s.cap()] @=> this.instruments;
-    for (0 => int x; x < s.cap(); x++) { s[x] @=> this.instruments[x]; }
-
-    main_loop();
-  }
-}
-
 class SequencerEvent extends Event {
   float loop_percent;
   int id;
@@ -92,8 +64,6 @@ public class MonDrum extends Instrument {
   Monome monome;
   SampleEngine sample_engine;
   Sequencer sequencer;
-  SequencerControlInstrument sequencer_control_instrument;
-  SequencerKbController sequencer_kb_controller;
 
   fun void init(string monome_xmit_host,
                 string monome_xmit_prefix,
@@ -111,9 +81,6 @@ public class MonDrum extends Instrument {
     this.sample_engine.init(this.monome, sampeng_xmit_prefix, sampeng_xmit_host,
                             sampeng_xmit_port, sampeng_recv_port);
     this.sequencer.init(sequencer_bpm, sequencer_bars);
-
-    this.sequencer_control_instrument.init(this.sequencer);
-    this.sequencer_kb_controller.init([this.sequencer_control_instrument]);
   }
 }
 
@@ -251,7 +218,7 @@ class SampleEngine {
   }
 }
 
-class Sequencer {
+class Sequencer extends KbController {
   float bpm;
   int bars;
   4 => int beats_per_bar;
@@ -281,6 +248,11 @@ class Sequencer {
 
     calc_durs();
     spork ~ playstart_loop();
+
+    Instrument instruments_placeholder[1] @=> this.instruments;
+    this @=> this.instruments[0];
+    controller_main_loop();
+
     me.yield();
   }
 
@@ -348,5 +320,15 @@ class Sequencer {
     this.stop();
     me.yield();
     this.control_start_event.broadcast();
+  }
+
+  fun void receive(int signals[]) {
+    if (signals[0] == 112) {
+      this.playstart();
+    } else if (signals[0] == 111) {
+      this.play();
+    } else if (signals[0] == 105) {
+      this.stop();
+    }
   }
 }
