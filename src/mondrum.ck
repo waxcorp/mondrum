@@ -44,7 +44,7 @@ class KbController extends Controller {
   }
 }
 
-class SequencerEvent extends Event {
+class MonDrumSequencerEvent extends Event {
   float loop_percent;
   int id;
 }
@@ -56,32 +56,39 @@ class MonDrumSequence {
 }
 
 class MonDrumProgram {
-  fun void init(int foo) {
-    <<< foo >>>;
+  MonDrumSequence seqs[256];
+  MonDrum @ mondrum;
+
+  fun void init(MonDrum mondrum) {
+    mondrum @=> this.mondrum;
+  }
+
+  fun void load(string pgm) {
+    this.mondrum.db.load_mondrum_program(this, pgm);
   }
 }
 
 public class MonDrum extends Instrument {
   Monome monome;
-  SampleEngine sample_engine;
-  Sequencer sequencer;
+  MonDrumDB db;
+  MonDrumSequencer seq;
 
   fun void init(string monome_xmit_host,
                 string monome_xmit_prefix,
                 int monome_xmit_port,
                 int monome_recv_port,
                 int monome_model,
-                string sampeng_xmit_prefix,
-                string sampeng_xmit_host,
-                int sampeng_xmit_port,
-                int sampeng_recv_port,
+                string mondrum_db_xmit_prefix,
+                string mondrum_db_xmit_host,
+                int mondrum_db_xmit_port,
+                int mondrum_db_recv_port,
                 int sequencer_bpm,
                 int sequencer_bars) {
     this.monome.init(monome_xmit_host, monome_xmit_prefix, monome_xmit_port,
                      monome_recv_port, monome_model);
-    this.sample_engine.init(this.monome, sampeng_xmit_prefix, sampeng_xmit_host,
-                            sampeng_xmit_port, sampeng_recv_port);
-    this.sequencer.init(sequencer_bpm, sequencer_bars);
+    this.db.init(this.monome, mondrum_db_xmit_prefix, mondrum_db_xmit_host,
+                 mondrum_db_xmit_port, mondrum_db_recv_port);
+    this.seq.init(sequencer_bpm, sequencer_bars);
   }
 }
 
@@ -197,33 +204,37 @@ class MonomeButton {
   }
 }
 
-class SampleEngine {
-  Monome m;
-  string xmit_prefix;
+class MonDrumDB {
+  Monome monome;
+  "/mondrum_db/" => string xmit_prefix;
   string xmit_host;
   int xmit_port;
   OscSend xmit;
   OscRecv recv;
 
-  fun void init(Monome m, string xmit_prefix, string xmit_host, int xmit_port,
-                int recv_port) {
-    m @=> this.m;
+  fun void init(Monome monome, string xmit_prefix, string xmit_host,
+                int xmit_port, int recv_port) {
+    monome @=> this.monome;
     xmit_prefix => this.xmit_prefix;
     this.xmit.setHost(xmit_host, xmit_port);
     recv_port => this.recv.port;
     this.recv.listen();
   }
 
-  fun void read_matrix() {
-    this.m.buttons[0][0].set_level(15);
+  fun void load_mondrum_program(MonDrumProgram mondrum_program, string pgm) {
+    // do things
+  }
+
+  fun MonDrumSequence load_mondrum_sequence(string pgm, int seq_id) {
+    // do things
   }
 }
 
-class Sequencer extends KbController {
+class MonDrumSequencer extends KbController {
   float bpm;
   int bars;
   4 => int beats_per_bar;
-  SequencerEvent sequencer_events[];
+  MonDrumSequencerEvent sequencer_events[];
   100 => int events_per_bar;
   int main_loop_shred_id;
   Event control_start_event;
@@ -236,7 +247,7 @@ class Sequencer extends KbController {
 
   fun void init(float bpm, int bars) {
     (events_per_bar * bars) => int total_events;
-    SequencerEvent seq_evs[total_events];
+    MonDrumSequencerEvent seq_evs[total_events];
 
     for (0 => int i; i < total_events; i++) {
       (i $ float) / (total_events $ float) => seq_evs[i].loop_percent;
