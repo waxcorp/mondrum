@@ -138,6 +138,8 @@ class MonDrumSequence extends Instrument {
 }
 
 class MonDrumSequenceTrack {
+  100 => int volume;
+
   fun void init(int foo) {
     <<< foo >>>;
   }
