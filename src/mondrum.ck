@@ -136,7 +136,7 @@ class MonDrumSequence extends MonDrumObject {
   fun void tick() { tick(this.loc); }
   fun void tick(int l[]) {
     set_loc(l);
-    <<< "tick", this.cur_tick, "loc", l[0], l[1], l[2] >>>;
+    if (l[2] == 1) <<< l[0], l[1], l[2] >>>;
 
     if (this.cur_tick > this.ticks.cap()) {
       set_loc(1);
@@ -399,7 +399,6 @@ class MonDrumSequenceController extends KbController {
 
   // like MPC we pause if we're currently playing and stop/reset if not.
   fun void stop() {
-    <<< "stop" >>>;
     if (this.state == "playing") {
       this.playpause();
     } else {
@@ -409,12 +408,10 @@ class MonDrumSequenceController extends KbController {
   }
 
   fun void play() {
-    <<< "play" >>>;
     if (this.state != "playing") this.playpause();
   }
 
   fun void playstart() {
-    <<< "playstart" >>>;
     this.stop();
     this.stop();
     me.yield();
