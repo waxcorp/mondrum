@@ -139,6 +139,7 @@ class MonDrumSequence extends MonDrumObject {
     <<< "tick", this.cur_tick, "loc", l[0], l[1], l[2] >>>;
 
     if (this.cur_tick > this.ticks.cap()) {
+      set_loc(1);
     } else {
       this.ticks[(this.cur_tick - 1)].broadcast();
       tick_dur() => now;
