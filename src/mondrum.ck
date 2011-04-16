@@ -44,11 +44,6 @@ class KbController extends Controller {
   }
 }
 
-class MonDrumSequenceEvent extends Event {
-  float loop_percent;
-  int id;
-}
-
 class MonDrumProgram {
   MonDrum @ mondrum;
   MonDrumSequence seqs[32];
@@ -67,6 +62,11 @@ class MonDrumProgram {
       // this.mondrum.db.load_mondrum_program(this, pgm_path);
     }
   }
+}
+
+class MonDrumSequenceEvent extends Event {
+  float loop_percent;
+  int id;
 }
 
 class MonDrumSequence extends Instrument {
