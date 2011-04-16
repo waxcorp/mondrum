@@ -89,7 +89,7 @@ class MonDrumSequence extends Instrument {
   16 => int semi_beats;
   128 => int micro_beats;
 
-  int bpm;
+  88 => int bpm;
   1 => int cur_tick;
   true => int use_master_bpm;
 
