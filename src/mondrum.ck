@@ -49,8 +49,11 @@ class MonDrumProject {
   MonDrumProgram pgms[64];
   seqs[0] @=> MonDrumSequence seq;
   88 => int bpm;
+  string prj_path;
 
   fun void init(string prj_path) {
+    prj_path => this.prj_path;
+
     for (0 => int i; i < this.seqs.cap(); i++) this.seqs[i].init(this);
     for (0 => int i; i < this.pgms.cap(); i++) this.pgms[i].init(this);
 
