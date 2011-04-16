@@ -44,35 +44,28 @@ class KbController extends Controller {
   }
 }
 
-class MonDrumProject {
-  MonDrumSequence seqs[32];
-  MonDrumProgram pgms[64];
-  seqs[0] @=> MonDrumSequence seq;
-  88 => int bpm;
-  string prj_path;
+class MonDrumObject extends Controller {
+  MonDrum @ mondrum;
+  MonDrumProject @ prj;
+  string path;
 
-  fun void init(string prj_path) {
-    prj_path => this.prj_path;
+  fun void init(string path, MonDrum mondrum, MonDrumProject prj) {
+    path => this.path;
+    mondrum @=> this.mondrum;
+    prj @=> this.prj;
 
-    for (0 => int i; i < this.seqs.cap(); i++) this.seqs[i].init(this);
-    for (0 => int i; i < this.pgms.cap(); i++) this.pgms[i].init(this);
-
-    if (prj_path != "") {
-      // this.mondrum.db.load_mondrum_project(this, prj_path);
-    }
+    init_helper();
   }
 
-  fun void load(string prj_path) {
-    // stub
+  fun void init_helper() {
+  }
+
+  fun void load(string path) {
+    // this.mondrum.db.load_mondrum_object(this, path, this.toString());
   }
 }
 
-class MonDrumProgram {
-  MonDrumProject @ prj;
-
-  fun void init(MonDrumProject prj) {
-    prj @=> this.prj;
-  }
+class MonDrumProgram extends MonDrumObject {
 }
 
 class MonDrumSequenceEvent extends Event {
@@ -80,9 +73,7 @@ class MonDrumSequenceEvent extends Event {
   int id;
 }
 
-class MonDrumSequence extends Instrument {
-  MonDrum @ mondrum;
-  MonDrumProject @ prj;
+class MonDrumSequence extends MonDrumObject {
   MonDrumSequenceTrack tracks[64];
   MonDrumSequenceEvent ticks[];
 
@@ -96,9 +87,8 @@ class MonDrumSequence extends Instrument {
   1 => int cur_tick;
   true => int use_master_bpm;
 
-  fun void init(MonDrumProject prj) {
+  fun void init_helper() {
     MonDrumSequenceEvent tix[(bars * beats * semi_beats)] @=> this.ticks;
-    prj @=> this.prj;
   }
 
   fun int loc_to_tick(int l[]) {
@@ -161,6 +151,29 @@ class MonDrumSequence extends Instrument {
   }
 }
 
+class MonDrumProject {
+  MonDrum @ mondrum;
+  MonDrumSequence seqs[32];
+  MonDrumProgram pgms[64];
+  seqs[0] @=> MonDrumSequence seq;
+  88 => int bpm;
+  string path;
+
+  fun void init(string path, MonDrum m) {
+    path => this.path;
+    m @=> this.mondrum;
+
+    for (0 => int i; i < this.seqs.cap(); i++) this.seqs[i].init("", m, this);
+    for (0 => int i; i < this.pgms.cap(); i++) this.pgms[i].init("", m, this);
+
+    this.load(path);
+  }
+
+  fun void load(string path) {
+    this.mondrum.db.load_mondrum_project(this, path);
+  }
+}
+
 class MonDrumSequenceTrack {
   100 => int volume;
 
@@ -169,10 +182,11 @@ class MonDrumSequenceTrack {
   }
 }
 
-public class MonDrum extends Instrument {
+public class MonDrum extends Controller {
   Monome monome;
   MonDrumDB db;
   MonDrumSequenceController seqctl;
+  MonDrumProject prj;
 
   fun void init(string monome_xmit_host,
                 string monome_xmit_prefix,
@@ -188,7 +202,8 @@ public class MonDrum extends Instrument {
                      monome_recv_port, monome_model);
     this.db.init(this.monome, mondrum_db_xmit_prefix, mondrum_db_xmit_host,
                  mondrum_db_xmit_port, mondrum_db_recv_port);
-    this.seqctl.init(prj_path);
+    this.prj.init(prj_path, this);
+    this.seqctl.init(this);
   }
 }
 
@@ -331,15 +346,15 @@ class MonDrumDB {
 }
 
 class MonDrumSequenceController extends KbController {
-  MonDrumProject prj;
+  MonDrum @ mondrum;
   int main_loop_shred_id;
   Event start_event;
   Event stop_event;
   Event playpause_event;
   "stopped" => string state;
 
-  fun void init(string prj_path) {
-    this.prj.init(prj_path);
+  fun void init(MonDrum mondrum) {
+    mondrum @=> this.mondrum;
 
     Instrument instruments_placeholder[1] @=> this.instruments;
     this @=> this.instruments[0];
@@ -374,10 +389,10 @@ class MonDrumSequenceController extends KbController {
   }
 
   fun void main_loop() {
-    this.prj.seq.tick([1, 1, 1, 1]);
+    this.mondrum.prj.seq.tick([1, 1, 1, 1]);
     while (1) {
       if (this.state == "paused") playpause_event => now;
-      this.prj.seq.tick();
+      this.mondrum.prj.seq.tick();
     }
   }
 
