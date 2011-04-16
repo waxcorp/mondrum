@@ -44,34 +44,103 @@ class KbController extends Controller {
   }
 }
 
-class MonDrumSequencerEvent extends Event {
+class MonDrumSequenceEvent extends Event {
   float loop_percent;
   int id;
 }
 
-class MonDrumSequence {
-  fun void init(int foo) {
-    <<< foo >>>;
-  }
-}
-
 class MonDrumProgram {
-  MonDrumSequence seqs[256];
   MonDrum @ mondrum;
+  MonDrumSequence seqs[32];
+  seqs[0] @=> MonDrumSequence seq;
 
   fun void init(MonDrum mondrum) {
     mondrum @=> this.mondrum;
   }
 
-  fun void load(string pgm) {
-    this.mondrum.db.load_mondrum_program(this, pgm);
+  fun void load(string pgm_path) {
+    if (pgm_path == "") {
+      for (0 => int i; i < this.seqs.cap(); i++) {
+        this.seqs[i].init(85, 2, 4, 16, 256);
+      }
+    } else {
+      // this.mondrum.db.load_mondrum_program(this, pgm_path);
+    }
+  }
+}
+
+class MonDrumSequence {
+  MonDrum @ mondrum;
+  MonDrumSequenceTrack tracks[64];
+  MonDrumSequenceEvent ticks[];
+  [1, 1, 1, 1] @=> int loc[];
+  int bpm;
+  int loc_max[];
+  1 => int cur_tick;
+
+  fun void init(int bpm, int bars, int beats, int semi_beats, int micro_beats) {
+    bpm @=> this.bpm;
+    MonDrumSequenceEvent tix[(bars * beats * semi_beats)] @=> ticks;
+    [bars, beats, semi_beats, micro_beats] @=> loc_max;
+  }
+
+  fun int loc_to_tick(int l[]) {
+    (((l[0]-1) * this.loc_max[1]) + (l[1]-1)) * this.loc_max[2] +
+     (l[2]-1) + 1 => int t;
+
+    return t;
+  }
+
+  fun int[] tick_to_loc(int t) {
+    t--;
+    1 + (t / (this.loc_max[1] * this.loc_max[2])) => int bar;
+    1 + ((t / this.loc_max[2]) % this.loc_max[1]) => int beat;
+    1 + (t % this.loc_max[2]) => int semi_beat;
+
+    return [bar, beat, semi_beat, 1];
+  }
+
+  fun dur tick_dur() {
+    60::second / this.bpm => dur beat_dur;
+    this.loc_max[0] * this.loc_max[1] => int beats_in_loop;
+    beat_dur * beats_in_loop => dur loop_dur;
+
+    return loop_dur / this.ticks.cap();
+  }
+
+  fun void set_loc(int l[]) {
+    loc_to_tick(l) => this.cur_tick;
+  }
+
+  fun void tick() {
+    tick(tick_to_loc(this.cur_tick));
+  }
+
+  fun void tick(int l[]) {
+    set_loc(l);
+    <<< "tick", this.cur_tick, "loc", l[0], l[1], l[2] >>>;
+
+    if (this.cur_tick <= ticks.cap()) {
+      ticks[(this.cur_tick - 1)].broadcast();
+
+      tick_dur() => now;
+      this.cur_tick++;
+    } else {
+      1 => this.cur_tick;
+    }
+  }
+}
+
+class MonDrumSequenceTrack {
+  fun void init(int foo) {
+    <<< foo >>>;
   }
 }
 
 public class MonDrum extends Instrument {
   Monome monome;
   MonDrumDB db;
-  MonDrumSequencer seq;
+  MonDrumSequenceController seqctl;
 
   fun void init(string monome_xmit_host,
                 string monome_xmit_prefix,
@@ -82,13 +151,12 @@ public class MonDrum extends Instrument {
                 string mondrum_db_xmit_host,
                 int mondrum_db_xmit_port,
                 int mondrum_db_recv_port,
-                int sequencer_bpm,
-                int sequencer_bars) {
+                string pgm) {
     this.monome.init(monome_xmit_host, monome_xmit_prefix, monome_xmit_port,
                      monome_recv_port, monome_model);
     this.db.init(this.monome, mondrum_db_xmit_prefix, mondrum_db_xmit_host,
                  mondrum_db_xmit_port, mondrum_db_recv_port);
-    this.seq.init(sequencer_bpm, sequencer_bars);
+    this.seqctl.init(pgm);
   }
 }
 
@@ -222,7 +290,7 @@ class MonDrumDB {
   }
 
   fun void load_mondrum_program(MonDrumProgram mondrum_program, string pgm) {
-    // do things
+    
   }
 
   fun MonDrumSequence load_mondrum_sequence(string pgm, int seq_id) {
@@ -230,41 +298,22 @@ class MonDrumDB {
   }
 }
 
-class MonDrumSequencer extends KbController {
-  float bpm;
-  int bars;
-  4 => int beats_per_bar;
-  MonDrumSequencerEvent sequencer_events[];
-  100 => int events_per_bar;
+class MonDrumSequenceController extends KbController {
+  MonDrumProgram pgm;
   int main_loop_shred_id;
-  Event control_start_event;
-  Event control_stop_event;
-  time event_start_time;
-  dur loop_dur;
-  dur step_dur;
+  Event start_event;
+  Event stop_event;
   Event playpause_event;
   "stopped" => string state;
 
-  fun void init(float bpm, int bars) {
-    (events_per_bar * bars) => int total_events;
-    MonDrumSequencerEvent seq_evs[total_events];
-
-    for (0 => int i; i < total_events; i++) {
-      (i $ float) / (total_events $ float) => seq_evs[i].loop_percent;
-      i => seq_evs[i].id;
-    }
-
-    seq_evs @=> this.sequencer_events;
-    bpm => this.bpm;
-    bars => this.bars;
-
-    calc_durs();
-    spork ~ playstart_loop();
+  fun void init(string pgm_path) {
+    this.pgm.load(pgm_path);
 
     Instrument instruments_placeholder[1] @=> this.instruments;
     this @=> this.instruments[0];
-    controller_main_loop();
 
+    spork ~ playstart_loop();
+    controller_main_loop();
     me.yield();
   }
 
@@ -274,39 +323,29 @@ class MonDrumSequencer extends KbController {
     } else if (this.state == "playing") {
       "paused" => this.state;
     } else if (this.state == "stopped") {
-      this.control_start_event.broadcast();
+      this.start_event.broadcast();
       "playing" => this.state;
     }
 
     playpause_event.broadcast();
   }
 
-  fun void calc_durs() {
-    60::second / this.bpm => dur beat_dur;
-    this.bars * this.beats_per_bar => int beats_in_loop;
-    beat_dur * beats_in_loop => this.loop_dur;
-    loop_dur / this.sequencer_events.cap() => this.step_dur;
-  }
-
   fun void playstart_loop() {
     while (1) {
-      this.control_start_event => now;
-
+      this.start_event => now;
+      "playing" => this.state;
       (spork ~ main_loop()).id() => this.main_loop_shred_id;
 
-      this.control_stop_event => now;
+      this.stop_event => now;
       Machine.remove(this.main_loop_shred_id);
     }
   }
 
   fun void main_loop() {
+    this.pgm.seq.tick([1, 1, 1, 1]);
     while (1) {
-      for (0 => int i; i < this.sequencer_events.cap(); i++) {
-        if (this.state == "paused")  playpause_event => now;
-        this.sequencer_events[i].broadcast();
-        if ((i % 5) == 0) <<< i >>>;
-        this.step_dur => now;
-      }
+      if (this.state == "paused") playpause_event => now;
+      this.pgm.seq.tick();
     }
   }
 
@@ -316,7 +355,7 @@ class MonDrumSequencer extends KbController {
     if (this.state == "playing") {
       this.playpause();
     } else {
-      this.control_stop_event.broadcast();
+      this.stop_event.broadcast();
       "stopped" => this.state;
     }
   }
@@ -331,7 +370,7 @@ class MonDrumSequencer extends KbController {
     this.stop();
     this.stop();
     me.yield();
-    this.control_start_event.broadcast();
+    this.start_event.broadcast();
   }
 
   fun void receive(int signals[]) {
