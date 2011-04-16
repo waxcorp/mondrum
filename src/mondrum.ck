@@ -44,7 +44,7 @@ class KbController extends Controller {
   }
 }
 
-class MonDrumObject extends Controller {
+class MonDrumDBObject extends Controller {
   MonDrum @ mondrum;
   MonDrumProject @ prj;
   string path;
@@ -65,7 +65,56 @@ class MonDrumObject extends Controller {
   }
 }
 
-class MonDrumProgram extends MonDrumObject {
+class MonDrumProgram extends MonDrumDBObject {
+  MonDrumSample samples[256];
+}
+
+class MonDrumSample extends MonDrumDBObject {
+  Gain gain;
+  5 => gain.gain;
+  int start;
+  int end;
+  SndBuf buf_l, buf_r;
+  buf_r.channel(1);;
+  23040000 => buf_l.chunks => buf_r.chunks; // ~4 minutes max sample size @96k
+  int shred_id;
+
+  fun void play() {
+    (spork ~ play_shred()).id() => this.shred_id;
+    me.yield();
+  }
+
+  fun void play_shred() {
+    stop(me.id()); // in case we're currently playing
+
+    this.path => this.buf_l.read;
+    this.path => this.buf_r.read;
+
+    if (this.end == 0) { buf_l.samples() => this.end; }
+
+    this.start => buf_l.pos => buf_r.pos;
+
+    this.buf_l => this.gain => dac;
+    this.buf_r => this.gain => dac;
+
+    (this.end - this.start)::samp => now;
+
+    stop();
+  }
+
+  fun float rate() { return this.buf_l.rate(); }
+  fun float rate(float r) {
+    r => this.buf_l.rate => this.buf_r.rate;
+    return r;
+  }
+
+  fun void stop(int not_this_id) { if (not_this_id != this.shred_id) stop(); }
+  fun void stop() {
+    this.gain =< dac;
+    this.buf_l =< this.gain;
+    this.buf_r =< this.gain;
+    Machine.remove(this.shred_id);
+  }
 }
 
 class MonDrumSequenceEvent extends Event {
@@ -73,15 +122,15 @@ class MonDrumSequenceEvent extends Event {
   int id;
 }
 
-class MonDrumSequence extends MonDrumObject {
-  MonDrumSequenceTrack tracks[64];
+class MonDrumSequence extends MonDrumDBObject {
+  MonDrumSequenceTrack tracks[128];
   MonDrumSequenceEvent ticks[];
 
   [1, 1, 1, 1] @=> int loc[];
   2 => int bars;
   4 => int beats;
-  16 => int semi_beats;
-  128 => int micro_beats;
+  96 => int semi_beats;
+  96 => int micro_beats;
 
   88 => int bpm;
   1 => int cur_tick;
@@ -154,8 +203,8 @@ class MonDrumSequence extends MonDrumObject {
 
 class MonDrumProject {
   MonDrum @ mondrum;
-  MonDrumSequence seqs[32];
-  MonDrumProgram pgms[64];
+  MonDrumSequence seqs[128];
+  MonDrumProgram pgms[128];
   seqs[0] @=> MonDrumSequence seq;
   88 => int bpm;
   string path;
