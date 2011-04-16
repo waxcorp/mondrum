@@ -69,7 +69,7 @@ class MonDrumProgram {
   }
 }
 
-class MonDrumSequence {
+class MonDrumSequence extends Instrument {
   MonDrum @ mondrum;
   MonDrumSequenceTrack tracks[64];
   MonDrumSequenceEvent ticks[];
@@ -128,6 +128,10 @@ class MonDrumSequence {
     } else {
       1 => this.cur_tick;
     }
+  }
+
+  fun void receive(int data[]) {
+    
   }
 }
 
