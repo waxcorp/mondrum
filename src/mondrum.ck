@@ -108,25 +108,27 @@ class MonDrumSequence extends Instrument {
     return loop_dur / this.ticks.cap();
   }
 
+  fun void set_loc(int t) {
+    t => this.cur_tick;
+    tick_to_loc(t) @=> this.loc;
+  }
+
   fun void set_loc(int l[]) {
+    l @=> this.loc;
     loc_to_tick(l) => this.cur_tick;
   }
 
-  fun void tick() {
-    tick(tick_to_loc(this.cur_tick));
-  }
-
+  fun void tick() { tick(this.loc); }
   fun void tick(int l[]) {
     set_loc(l);
     <<< "tick", this.cur_tick, "loc", l[0], l[1], l[2] >>>;
 
-    if (this.cur_tick <= ticks.cap()) {
-      ticks[(this.cur_tick - 1)].broadcast();
-
-      tick_dur() => now;
-      this.cur_tick++;
+    if (this.cur_tick > this.ticks.cap()) {
+      set_loc(1);
     } else {
-      1 => this.cur_tick;
+      this.ticks[(this.cur_tick - 1)].broadcast();
+      tick_dur() => now;
+      set_loc(this.cur_tick + 1);
     }
   }
 
