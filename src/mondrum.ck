@@ -1,6 +1,5 @@
 class Instrument {
-  fun void receive(int signals[]) {
-  }
+  fun void receive(int signals[]) {}
 }
 
 class Controller extends Instrument {
@@ -21,8 +20,7 @@ class Controller extends Instrument {
     }
   }
 
-  fun int[] control_signal() {
-  }
+  fun int[] control_signal() {}
 }
 
 class KbController extends Controller {
@@ -57,8 +55,7 @@ class MonDrumDBObject extends Controller {
     init_helper();
   }
 
-  fun void init_helper() {
-  }
+  fun void init_helper() {}
 
   fun void load(string path) {
     // this.mondrum.db.load_mondrum_object(this, path, this.toString());
