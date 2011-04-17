@@ -1,6 +1,8 @@
 #!/bin/bash
 
-for test in test/tests/*.ck; do
+[ "$*" ] && tests="$*" || tests=test/tests/*.ck
+
+for test in $tests; do
   tmp=$(mktemp -t mondrum-test)
   echo 'ProduceMonDrum p; p.produce() @=> MonDrum @ mondrum;' >> $tmp
   cat $test >> $tmp
