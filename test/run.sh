@@ -8,4 +8,6 @@ for test in test/tests/*.ck; do
   echo INFO: running test $test from $tmp
   chuck src/mondrum.ck test/lib/test-setup.ck $tmp
   echo -e "INFO: test $test complete\n"
+
+  rm $tmp
 done
