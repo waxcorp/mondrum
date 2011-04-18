@@ -2,10 +2,10 @@
 
 [ "$*" ] && tests="$*" || tests=test/tests/*.ck
 
-for test in $tests; do
+for file in $tests; do
   tmp=$(mktemp -t mondrum-test)
   echo 'ProduceMonDrum p; p.produce() @=> MonDrum @ mondrum;' >> $tmp
-  cat $test >> $tmp
+  cat $file >> $tmp
 
   echo INFO: running test $test from $tmp
   cat -n $tmp | sed -e 's/^/INFO: /'
