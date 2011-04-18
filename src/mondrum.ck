@@ -66,13 +66,14 @@ class MonDrumProgram extends MonDrumDBObject {
 }
 
 class MonDrumSample extends MonDrumDBObject {
-  5760000 => int CHUNK_SIZE; // ~1 minute max readahead @96k
-
   Gain gain;
-  .5 => gain.gain;
+  1 => gain.gain;
 
   SndBuf buf_l, buf_r;
   buf_r.channel(1);;
+
+  // ~1 minute max readahead @96k
+  5760000 => int CHUNK_SIZE => chunks;
 
   int start, end;
   int shred_id;
@@ -81,21 +82,32 @@ class MonDrumSample extends MonDrumDBObject {
     this.path => this.buf_l.read;
     this.path => this.buf_r.read;
 
-    this.path => this.buf_l.read;
-    this.path => this.buf_r.read;
+    <<< this.toString(), "loading", this.path >>>;
 
-    // read the file
-    <<< "loading", this.path >>>;
+    // read up to CHUNK_SIZE samples into ram.  don't chain gain here
+    // because it uses more cpu for some reason, even after unchucking
+    // blackhole later
     this.buf_l => blackhole;
     this.buf_r => blackhole;
-    (this.buf_l.samples()/2000)::ms => now;
-    <<< "probably loaded", this.path >>>;
 
+    // wait for 1/4 the file length for the load to complete
+    (buf_l.samples()/4)::samp => now;
+
+    <<< this.toString(), "probably done loading", this.path >>>;
+
+    // stop reading through the file
     this.buf_l =< blackhole;
     this.buf_r =< blackhole;
 
+    // connect to the gain ugen
     this.buf_l => this.gain;
     this.buf_r => this.gain;
+  }
+
+  fun int chunks(int size) {
+    size => this.buf_l.chunks => this.buf_r.chunks;
+
+    return size;
   }
 
   fun int[] set_start_end(int start, int end) {
@@ -123,13 +135,9 @@ class MonDrumSample extends MonDrumDBObject {
     stop(me.id()); // in case we're currently playing
 
     if (this.end == 0) { buf_l.samples() => this.end; }
-
     this.start => buf_l.pos => buf_r.pos;
 
-    //44100*2::samp => now;
-
     this.gain => dac;
-
     (this.end - this.start)::samp => now;
 
     stop();

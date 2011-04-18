@@ -1,14 +1,15 @@
 "/Users/josh/tmp/foo.aif" => string path;
 if (me.args() > 0) { me.arg(0) => path; }
 
-52 => int samples;
+64 => int samples;
 
 for (0 => int i; i < samples; i++) {
   <<< "loading", i >>>;
   spork ~ mondrum.prj.pgms[0].samples[i].init(path, mondrum);
 }
 
-5::second => now;
+me.yield();
+(mondrum.prj.pgms[0].samples[0].buf_l.samples()/4)::samp => now;
 
 for (0 => int i; i < samples; i++) {
   <<< "playing", i >>>;
