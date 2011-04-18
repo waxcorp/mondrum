@@ -66,7 +66,7 @@ class MonDrumProgram extends MonDrumDBObject {
 }
 
 class MonDrumSample extends MonDrumDBObject {
-  Gain _gain;
+  Gain _gain_l, _gain_r;
   1 => gain;
 
   SndBuf _buf_l, _buf_r;
@@ -101,8 +101,8 @@ class MonDrumSample extends MonDrumDBObject {
     _buf_r =< blackhole;
 
     // connect to the gain ugen
-    _buf_l => _gain;
-    _buf_r => _gain;
+    _buf_l => _gain_l;
+    _buf_r => _gain_r;
   }
 
   fun int[] set_start_end(int start, int end) {
@@ -132,7 +132,8 @@ class MonDrumSample extends MonDrumDBObject {
     if (_end == 0) { _buf_l.samples() => _end; }
     _start => _buf_l.pos => _buf_r.pos;
 
-    _gain => dac;
+    _gain_l => dac.left;
+    _gain_r => dac.right;
     (_end - _start)::samp => now;
 
     stop();
@@ -140,7 +141,8 @@ class MonDrumSample extends MonDrumDBObject {
 
   fun void stop(int not_this_id) { if (not_this_id != _shred_id) stop(); }
   fun void stop() {
-    _gain =< dac;
+    _gain_l =< dac.left;
+    _gain_r =< dac.right;
     Machine.remove(_shred_id);
   }
 
@@ -150,9 +152,9 @@ class MonDrumSample extends MonDrumDBObject {
     return s => _buf_l.chunks => _buf_r.chunks;
   }
 
-  fun float gain() { return _gain.gain(); }
+  fun float gain() { return _gain_l.gain(); }
   fun float gain(float g) {
-    return g => _gain.gain;
+    return g => _gain_l.gain => _gain_r.gain;
   }
 
   fun float rate() { return _buf_l.rate(); }
