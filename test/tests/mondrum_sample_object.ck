@@ -1,12 +1,19 @@
 "/Users/josh/tmp/foo.aif" => string path;
 if (me.args() > 0) { me.arg(0) => path; }
 
-for (0 => int i; i < 8; i++) {
-  2 => mondrum.prj.pgms[0].samples[i].gain.gain;
-  path => mondrum.prj.pgms[0].samples[i].path;
-  <<< "playing" >>>;
+52 => int samples;
+
+for (0 => int i; i < samples; i++) {
+  <<< "loading", i >>>;
+  spork ~ mondrum.prj.pgms[0].samples[i].init(path, mondrum);
+}
+
+5::second => now;
+
+for (0 => int i; i < samples; i++) {
+  <<< "playing", i >>>;
   mondrum.prj.pgms[0].samples[i].play();
-  300::ms => now;
+  100::ms => now;
 }
 
 // wait for the last sample to play out

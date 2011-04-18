@@ -47,10 +47,9 @@ class MonDrumDBObject extends Controller {
   MonDrumProject @ prj;
   string path;
 
-  fun void init(string path, MonDrum mondrum, MonDrumProject prj) {
+  fun void init(string path, MonDrum mondrum) {
     path => this.path;
     mondrum @=> this.mondrum;
-    prj @=> this.prj;
 
     init_helper();
   }
@@ -67,14 +66,53 @@ class MonDrumProgram extends MonDrumDBObject {
 }
 
 class MonDrumSample extends MonDrumDBObject {
+  5760000 => int CHUNK_SIZE; // ~1 minute max readahead @96k
+
   Gain gain;
-  5 => gain.gain;
-  int start;
-  int end;
+  .5 => gain.gain;
+
   SndBuf buf_l, buf_r;
   buf_r.channel(1);;
-  23040000 => buf_l.chunks => buf_r.chunks; // ~4 minutes max sample size @96k
+
+  int start, end;
   int shred_id;
+
+  fun void init_helper() {
+    this.path => this.buf_l.read;
+    this.path => this.buf_r.read;
+
+    this.path => this.buf_l.read;
+    this.path => this.buf_r.read;
+
+    // read the file
+    <<< "loading", this.path >>>;
+    this.buf_l => blackhole;
+    this.buf_r => blackhole;
+    (this.buf_l.samples()/2000)::ms => now;
+    <<< "probably loaded", this.path >>>;
+
+    this.buf_l =< blackhole;
+    this.buf_r =< blackhole;
+
+    this.buf_l => this.gain;
+    this.buf_r => this.gain;
+  }
+
+  fun int[] set_start_end(int start, int end) {
+    if (start < 0 || start > end || start > this.buf_l.samples()) {
+      0 => this.buf_l.pos => this.buf_r.pos => this.start;
+    } else {
+      start => this.buf_l.pos => this.buf_r.pos => this.start;
+    }
+
+    if (end < 1 || end < start || end > this.buf_l.samples()) {
+      this.buf_l.samples() => this.end;
+    } else {
+      end => this.end;
+    }
+
+    return [start, end];
+  }
 
   fun void play() {
     (spork ~ play_shred()).id() => this.shred_id;
@@ -84,20 +122,24 @@ class MonDrumSample extends MonDrumDBObject {
   fun void play_shred() {
     stop(me.id()); // in case we're currently playing
 
-    this.path => this.buf_l.read;
-    this.path => this.buf_r.read;
-
     if (this.end == 0) { buf_l.samples() => this.end; }
 
     this.start => buf_l.pos => buf_r.pos;
 
-    this.buf_l => this.gain => dac;
-    this.buf_r => this.gain => dac;
+    //44100*2::samp => now;
+
+    this.gain => dac;
 
     (this.end - this.start)::samp => now;
 
     stop();
   }
+
+  //fun float gain(float g) {
+  //  g => this.gain_l.gain => this.gain_r.gain;
+  //
+  //  return g;
+  //}
 
   fun float rate() { return this.buf_l.rate(); }
   fun float rate(float r) {
@@ -108,8 +150,6 @@ class MonDrumSample extends MonDrumDBObject {
   fun void stop(int not_this_id) { if (not_this_id != this.shred_id) stop(); }
   fun void stop() {
     this.gain =< dac;
-    this.buf_l =< this.gain;
-    this.buf_r =< this.gain;
     Machine.remove(this.shred_id);
   }
 }
@@ -155,7 +195,7 @@ class MonDrumSequence extends MonDrumDBObject {
 
   fun int get_bpm() {
     if (use_master_bpm) {
-      return this.prj.bpm;
+      return this.mondrum.prj.bpm;
     } else {
       return this.bpm;
     }
@@ -206,12 +246,12 @@ class MonDrumProject {
   88 => int bpm;
   string path;
 
-  fun void init(string path, MonDrum m) {
+  fun void init(string path, MonDrum mondrum) {
     path => this.path;
-    m @=> this.mondrum;
+    mondrum @=> this.mondrum;
 
-    for (0 => int i; i < this.seqs.cap(); i++) this.seqs[i].init("", m, this);
-    for (0 => int i; i < this.pgms.cap(); i++) this.pgms[i].init("", m, this);
+    for (0 => int i; i < this.seqs.cap(); i++) this.seqs[i].init("", mondrum);
+    for (0 => int i; i < this.pgms.cap(); i++) this.pgms[i].init("", mondrum);
 
     this.load(path);
   }
