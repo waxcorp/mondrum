@@ -51,6 +51,6 @@ if __name__ == '__main__':
   in_path = sys.argv[1]
 
   start = end = None
-  if sys.argv[1:]: start, end = int(sys.argv[2]), int(sys.argv[3])
+  if sys.argv[2:]: start, end = int(sys.argv[2]), int(sys.argv[3])
 
   split_wave(in_path, start=start, end=end)
