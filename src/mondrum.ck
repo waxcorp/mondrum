@@ -66,95 +66,60 @@ class MonDrumProgram extends MonDrumDBObject {
 }
 
 class MonDrumSample extends MonDrumDBObject {
-  Gain _gain_l, _gain_r;
-  1 => gain;
-
   SndBuf _buf_l, _buf_r;
-  _buf_r.channel(1);;
+  0.5 => gain;
+  0 => int _chan_l;
+  1 => int _chan_r;
 
-  // ~1 minute max readahead @96k
-  5760000 => int CHUNK_SIZE => chunks;
-
-  int _start;
-  int _end;
   int _shred_id;
 
   fun void init_helper() {
-    _path => _buf_l.read;
-    _path => _buf_r.read;
+    _path + "_l.wav" => _buf_l.read;
+    _path + "_r.wav" => _buf_r.read;
 
     <<< this.toString(), "loading", _path >>>;
 
-    // read up to CHUNK_SIZE samples into ram.  don't chain gain here
-    // because it uses more cpu for some reason, even after unchucking
-    // blackhole later
-    _buf_l => blackhole;
-    _buf_r => blackhole;
-
     // wait for 1/4 the file length for the load to complete
-    (_buf_l.samples()/4)::samp => now;
+    (_buf_l.samples()/100)::samp => now;
 
     <<< this.toString(), "probably done loading", _path >>>;
-
-    // stop reading through the file
-    _buf_l =< blackhole;
-    _buf_r =< blackhole;
-
-    // connect to the gain ugen
-    _buf_l => _gain_l;
-    _buf_r => _gain_r;
   }
 
-  fun int[] set_start_end(int start, int end) {
-    if (start < 0 || start > end || start > _buf_l.samples()) {
-      0 => _buf_l.pos => _buf_r.pos => _start;
-    } else {
-      start => _buf_l.pos => _buf_r.pos => _start;
-    }
-
-    if (end < 1 || end < start || end > _buf_l.samples()) {
-      _buf_l.samples() => _end;
-    } else {
-      end => _end;
-    }
-
-    return [start, end];
-  }
-
-  fun void play() {
-    (spork ~ play_shred()).id() => _shred_id;
+  fun void play(int pos) {
+    (spork ~ play_shred(pos)).id() => _shred_id;
     me.yield();
   }
 
-  fun void play_shred() {
+  fun void play_shred(int pos) {
     stop(me.id()); // in case we're currently playing
 
-    if (_end == 0) { _buf_l.samples() => _end; }
-    _start => _buf_l.pos => _buf_r.pos;
+    <<< "starting at pos", pos >>>;
+    pos => _buf_l.pos => _buf_r.pos;
 
-    _gain_l => dac.left;
-    _gain_r => dac.right;
-    (_end - _start)::samp => now;
+    // avoid double-chuck'ing
+    _buf_l =< dac.chan(_chan_l);
+    _buf_r =< dac.chan(_chan_r);
+
+    _buf_l => dac.chan(_chan_l);
+    _buf_r => dac.chan(_chan_r);
+
+    (_buf_l.samples() - pos)::samp => now;
 
     stop();
   }
 
   fun void stop(int not_this_id) { if (not_this_id != _shred_id) stop(); }
   fun void stop() {
-    _gain_l =< dac.left;
-    _gain_r =< dac.right;
+    _buf_l =< dac.chan(_chan_l);
+    _buf_r =< dac.chan(_chan_r);
     Machine.remove(_shred_id);
   }
 
   // SndBuf-compatible functions
 
-  fun int chunks(int s) {
-    return s => _buf_l.chunks => _buf_r.chunks;
-  }
-
-  fun float gain() { return _gain_l.gain(); }
+  fun float gain() { return _buf_l.gain(); }
   fun float gain(float g) {
-    return g => _gain_l.gain => _gain_r.gain;
+    return g => _buf_l.gain => _buf_r.gain;
   }
 
   fun float rate() { return _buf_l.rate(); }
