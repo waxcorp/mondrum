@@ -10,7 +10,7 @@ for file in $tests; do
   echo INFO: running test $test from $tmp
   cat -n $tmp | sed -e 's/^/INFO: /'
   echo
-  chuck src/mondrum.ck test/lib/test-setup.ck $tmp
+  sudo nice -n -19 chuck src/mondrum.ck test/lib/test-setup.ck $tmp
   echo -e "INFO: test $test complete\n"
 
   rm $tmp

@@ -80,7 +80,7 @@ class MonDrumSample extends MonDrumDBObject {
     <<< this.toString(), "loading", _path >>>;
 
     // wait for 1/4 the file length for the load to complete
-    (_buf_l.samples()/100)::samp => now;
+    (_buf_l.samples()/2)::samp => now;
 
     <<< this.toString(), "probably done loading", _path >>>;
   }
