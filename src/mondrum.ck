@@ -135,31 +135,31 @@ class MonDrumSequenceEvent extends Event {
 
 class MonDrumSequence extends MonDrumDBObject {
   MonDrumSequenceTrack _tracks[128];
-  MonDrumSequenceEvent _ticks[];
+  MonDrumSequenceEvent _tick_events[];
 
   [1, 1, 1, 1] @=> int _loc[];
   2 => int _bars;
   4 => int _beats;
-  96 => int _semi_beats;
-  96 => int _micro_beats;
+  96 => int _ticks;
+  96 => int _semi_ticks;
 
   88 => int _bpm;
   1 => int _cur_tick;
   true => int _use_master_bpm;
 
   fun void init_helper() {
-    MonDrumSequenceEvent tix[(_bars * _beats * _semi_beats)] @=> _ticks;
+    MonDrumSequenceEvent tix[(_bars * _beats * _ticks)] @=> _tick_events;
   }
 
   fun int loc_to_tick(int l[]) {
-    return (((l[0]-1) * _beats) + (l[1]-1)) * _semi_beats + (l[2]-1) + 1;
+    return (((l[0]-1) * _beats) + (l[1]-1)) * _ticks + (l[2]-1) + 1;
   }
 
   fun int[] tick_to_loc(int t) {
     t--;
-    1 + (t / (_beats * _semi_beats)) => int bar;
-    1 + ((t / _semi_beats) % _beats) => int beat;
-    1 + (t % _semi_beats) => int semi_beat;
+    1 + (t / (_beats * _ticks)) => int bar;
+    1 + ((t / _ticks) % _beats) => int beat;
+    1 + (t % _ticks) => int semi_beat;
 
     return [bar, beat, semi_beat, 1];
   }
@@ -177,7 +177,7 @@ class MonDrumSequence extends MonDrumDBObject {
     _bars * _beats => int beats_in_loop;
     beat_dur * beats_in_loop => dur loop_dur;
 
-    return loop_dur / _ticks.cap();
+    return loop_dur / _tick_events.cap();
   }
 
   fun void set_loc(int t) {
@@ -194,11 +194,11 @@ class MonDrumSequence extends MonDrumDBObject {
   fun void tick(int l[]) {
     set_loc(l);
 
-    if (_cur_tick > _ticks.cap()) {
+    if (_cur_tick > _tick_events.cap()) {
       set_loc(1);
     } else {
       if (l[2] == 1) <<< l[0], l[1], l[2] >>>;
-      _ticks[(_cur_tick - 1)].broadcast();
+      _tick_events[(_cur_tick - 1)].broadcast();
       tick_dur() => now;
       set_loc(_cur_tick + 1);
     }
