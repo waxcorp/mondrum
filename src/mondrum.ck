@@ -441,6 +441,7 @@ class MonDrumSequenceController extends KbController {
   Event _stop_event;
   Event _playpause_event;
   "stopped" => string _state;
+  Gain _gain[64];
 
   fun void init(MonDrum mondrum) {
     mondrum @=> _mondrum;
