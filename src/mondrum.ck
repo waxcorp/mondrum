@@ -63,7 +63,7 @@ class MonDrumDBObject extends Controller {
 
 class MonDrumProgram extends MonDrumDBObject {
   Gain _gain_l, _gain_r;
-  MonDrumSample _samples[128];
+  MonDrumSample _samples[256];
   0.5 => gain;
 
   fun void init_helper() {
