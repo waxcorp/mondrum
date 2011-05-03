@@ -88,7 +88,6 @@ class MonDrumSample extends MonDrumDBObject {
   fun void init_helper() {
     LiSa l @=> _lisa_l;
     LiSa r @=> _lisa_r;
-    64 => _lisa_l.maxVoices => _lisa_r.maxVoices;
     _pgm._gain_l @=> _out_l;
     _pgm._gain_r @=> _out_r;
     0.5 => gain;
@@ -115,31 +114,31 @@ class MonDrumSample extends MonDrumDBObject {
     }
   }
 
-  fun void play(int pos) {
+  fun void play(dur pos) {
     (spork ~ play_shred(pos)).id() => _shred_id;
     me.yield();
   }
 
-  fun void play_shred(int pos) {
+  fun void play_shred(dur pos) {
     stop(me.id()); // in case we're currently playing
 
     <<< "starting at pos", pos >>>;
-    pos => _lisa_l.playPos => _lisa_r.playPos;
 
     connect();
-    _lisa_l.getVoice() => int voice_l;
-    _lisa_r.getVoice() => int voice_r;
+    pos => _lisa_l.playPos => _lisa_r.playPos;
     true => _lisa_l.play => _lisa_r.play;
-    _lisa_l.duration() => now;
+    _lisa_l.duration() - pos => now;
     disconnect();
   }
 
   fun void connect() {
-    if (!_lisa_l.isConnectedTo(_out_l)) _lisa_l => _out_l;
-    if (!_lisa_l.isConnectedTo(_out_r)) _lisa_l => _out_r;
+    disconnect();
+    _lisa_l => _out_l;
+    _lisa_r => _out_r;
   }
 
   fun void disconnect() {
+    false => _lisa_l.play => _lisa_r.play;
     _lisa_l =< _out_l;
     _lisa_r =< _out_r;
   }
