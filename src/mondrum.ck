@@ -62,27 +62,52 @@ class MonDrumDBObject extends Controller {
 }
 
 class MonDrumProgram extends MonDrumDBObject {
-  MonDrumSample _samples[256];
+  Gain _gain_l, _gain_r;
+  MonDrumSample _samples[128];
+
+  fun void init_helper() {
+    for (0 => int i; i < _samples.cap(); i++) { this @=> _samples[i]._pgm; }
+  }
+}
+
+class MonDrumSequenceTrack extends MonDrumDBObject {
+  Gain _gain_l, _gain_r;
+  MonDrumProgram @ _pgm;
 }
 
 class MonDrumSample extends MonDrumDBObject {
-  SndBuf _buf_l, _buf_r;
-  0.5 => gain;
-  0 => int _chan_l;
-  1 => int _chan_r;
-
+  MonDrumProgram @ _pgm;
+  LiSa @ _lisa_l, _lisa_r;
+  Gain @ _out_l, _out_r;
   int _shred_id;
 
   fun void init_helper() {
-    _path + "_l.wav" => _buf_l.read;
-    _path + "_r.wav" => _buf_r.read;
+    LiSa l @=> _lisa_l;
+    LiSa r @=> _lisa_r;
+    _pgm._gain_l @=> _out_l;
+    _pgm._gain_r @=> _out_r;
+    0.5 => gain;
+  }
+
+  fun void load_file(string path, SndBuf buf_l, SndBuf buf_r) {
+    path => _path;
 
     <<< this.toString(), "loading", _path >>>;
 
-    // wait for 1/4 the file length for the load to complete
-    (_buf_l.samples()/2)::samp => now;
+    _path + "_l.wav" => buf_l.read;
+    _path + "_r.wav" => buf_r.read;
+
+    spork ~ copy_from_sndbuf_to_lisa(buf_l, _lisa_l);
+    copy_from_sndbuf_to_lisa(buf_r, _lisa_r);
 
     <<< this.toString(), "probably done loading", _path >>>;
+  }
+
+  fun void copy_from_sndbuf_to_lisa(SndBuf b, LiSa l) {
+    b.samples()::samp => l.duration;
+    for (0 => int i; i < b.samples(); i++) {
+      l.valueAt(b.valueAt(i), i::samp);
+    }
   }
 
   fun void play(int pos) {
@@ -94,37 +119,42 @@ class MonDrumSample extends MonDrumDBObject {
     stop(me.id()); // in case we're currently playing
 
     <<< "starting at pos", pos >>>;
-    pos => _buf_l.pos => _buf_r.pos;
+    pos => _lisa_l.playPos => _lisa_r.playPos;
 
-    // avoid double-chuck'ing
-    _buf_l =< dac.chan(_chan_l);
-    _buf_r =< dac.chan(_chan_r);
+    connect();
+    _lisa_l.getVoice() => int voice_l;
+    _lisa_r.getVoice() => int voice_r;
+    true => _lisa_l.play => _lisa_r.play;
+    _lisa_l.duration() => now;
+    disconnect();
+  }
 
-    _buf_l => dac.chan(_chan_l);
-    _buf_r => dac.chan(_chan_r);
+  fun void connect() {
+    if (!_lisa_l.isConnectedTo(_out_l)) _lisa_l => _out_l;
+    if (!_lisa_l.isConnectedTo(_out_r)) _lisa_l => _out_r;
+  }
 
-    (_buf_l.samples() - pos)::samp => now;
-
-    stop();
+  fun void disconnect() {
+    _lisa_l =< _out_l;
+    _lisa_r =< _out_r;
   }
 
   fun void stop(int not_this_id) { if (not_this_id != _shred_id) stop(); }
   fun void stop() {
-    _buf_l =< dac.chan(_chan_l);
-    _buf_r =< dac.chan(_chan_r);
+    disconnect();
     Machine.remove(_shred_id);
   }
 
-  // SndBuf-compatible functions
+  // UGen/LiSa-compatible functions
 
-  fun float gain() { return _buf_l.gain(); }
+  fun float gain() { return _lisa_l.gain(); }
   fun float gain(float g) {
-    return g => _buf_l.gain => _buf_r.gain;
+    return g => _lisa_l.gain => _lisa_r.gain;
   }
 
-  fun float rate() { return _buf_l.rate(); }
+  fun float rate() { return _lisa_l.rate(); }
   fun float rate(float r) {
-    return r => _buf_l.rate => _buf_r.rate;
+    return r => _lisa_l.rate => _lisa_r.rate;
   }
 }
 
@@ -135,6 +165,7 @@ class MonDrumSequenceEvent extends Event {
 
 class MonDrumSequence extends MonDrumDBObject {
   MonDrumSequenceTrack _tracks[128];
+  MonDrumSequenceTrack @ _track;
   MonDrumSequenceEvent _tick_events[];
 
   [1, 1, 1, 1] @=> int _loc[];
@@ -149,6 +180,11 @@ class MonDrumSequence extends MonDrumDBObject {
 
   fun void init_helper() {
     MonDrumSequenceEvent tix[(_bars * _beats * _ticks)] @=> _tick_events;
+    for (0 => int i; i < _tracks.cap(); i++) {
+      _tracks[i].init("", _mondrum);
+      _mondrum._prj._pgms[0] @=> _tracks[i]._pgm;
+    }
+    _tracks[0] @=> _mondrum._prj._seq._track;
   }
 
   fun int loc_to_tick(int l[]) {
@@ -204,9 +240,7 @@ class MonDrumSequence extends MonDrumDBObject {
     }
   }
 
-  fun void receive(int data[]) {
-    
-  }
+  fun void receive(int data[]) {}
 }
 
 class MonDrumProject {
@@ -221,22 +255,14 @@ class MonDrumProject {
     path => _path;
     mondrum @=> _mondrum;
 
-    for (0 => int i; i < _seqs.cap(); i++) _seqs[i].init("", mondrum);
     for (0 => int i; i < _pgms.cap(); i++) _pgms[i].init("", mondrum);
+    for (0 => int i; i < _seqs.cap(); i++) _seqs[i].init("", mondrum);
 
     load(path);
   }
 
   fun void load(string path) {
     _mondrum._db.load_mondrum_project(this, path);
-  }
-}
-
-class MonDrumSequenceTrack {
-  100 => int _volume;
-
-  fun void init(int foo) {
-    <<< foo >>>;
   }
 }
 
