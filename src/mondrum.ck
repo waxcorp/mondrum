@@ -64,10 +64,14 @@ class MonDrumDBObject extends Controller {
 class MonDrumProgram extends MonDrumDBObject {
   Gain _gain_l, _gain_r;
   MonDrumSample _samples[128];
+  0.5 => gain;
 
   fun void init_helper() {
     for (0 => int i; i < _samples.cap(); i++) { this @=> _samples[i]._pgm; }
   }
+
+  fun float gain(float g) { return g => _gain_l.gain => _gain_r.gain; }
+  fun float gain() { return _gain_l.gain(); }
 }
 
 class MonDrumSequenceTrack extends MonDrumDBObject {
@@ -84,6 +88,7 @@ class MonDrumSample extends MonDrumDBObject {
   fun void init_helper() {
     LiSa l @=> _lisa_l;
     LiSa r @=> _lisa_r;
+    64 => _lisa_l.maxVoices => _lisa_r.maxVoices;
     _pgm._gain_l @=> _out_l;
     _pgm._gain_r @=> _out_r;
     0.5 => gain;
@@ -97,10 +102,10 @@ class MonDrumSample extends MonDrumDBObject {
     _path + "_l.wav" => buf_l.read;
     _path + "_r.wav" => buf_r.read;
 
-    spork ~ copy_from_sndbuf_to_lisa(buf_l, _lisa_l);
+    copy_from_sndbuf_to_lisa(buf_l, _lisa_l);
     copy_from_sndbuf_to_lisa(buf_r, _lisa_r);
 
-    <<< this.toString(), "probably done loading", _path >>>;
+    <<< this.toString(), "done loading", _path >>>;
   }
 
   fun void copy_from_sndbuf_to_lisa(SndBuf b, LiSa l) {
@@ -156,6 +161,8 @@ class MonDrumSample extends MonDrumDBObject {
   fun float rate(float r) {
     return r => _lisa_l.rate => _lisa_r.rate;
   }
+
+  fun dur duration() { return _lisa_l.duration(); }
 }
 
 class MonDrumSequenceEvent extends Event {
