@@ -173,6 +173,7 @@ class MonDrumSequence extends MonDrumDBObject {
   MonDrumSequenceTrack _tracks[128];
   MonDrumSequenceTrack @ _track;
   MonDrumSequenceEvent _tick_events[];
+  Gain _gain[64];
 
   [1, 1, 1, 1] @=> int _loc[];
   2 => int _bars;
@@ -441,7 +442,6 @@ class MonDrumSequenceController extends KbController {
   Event _stop_event;
   Event _playpause_event;
   "stopped" => string _state;
-  Gain _gain[64];
 
   fun void init(MonDrum mondrum) {
     mondrum @=> _mondrum;
