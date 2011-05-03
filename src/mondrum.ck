@@ -289,9 +289,9 @@ public class MonDrum extends Controller {
                 int mondrum_db_recv_port,
                 string prj_path) {
     _monome.init(monome_xmit_host, monome_xmit_prefix, monome_xmit_port,
-                     monome_recv_port, monome_model);
+                 monome_recv_port, monome_model);
     _db.init(_monome, mondrum_db_xmit_prefix, mondrum_db_xmit_host,
-                 mondrum_db_xmit_port, mondrum_db_recv_port);
+             mondrum_db_xmit_port, mondrum_db_recv_port);
     _prj.init(prj_path, this);
     _seqctl.init(this);
   }
