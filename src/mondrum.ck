@@ -173,7 +173,6 @@ class MonDrumSequence extends MonDrumDBObject {
   MonDrumSequenceTrack _tracks[128];
   MonDrumSequenceTrack @ _track;
   MonDrumSequenceEvent _tick_events[];
-  Gain _gain[64];
 
   [1, 1, 1, 1] @=> int _loc[];
   2 => int _bars;
@@ -254,6 +253,7 @@ class MonDrumProject {
   MonDrum @ _mondrum;
   MonDrumSequence _seqs[128];
   MonDrumProgram _pgms[128];
+  Gain _gain[64];
   _seqs[0] @=> MonDrumSequence _seq;
   88 => int _bpm;
   string _path;
