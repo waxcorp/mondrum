@@ -53,7 +53,6 @@ class OSCControl:
       self._state = data[1]
 
 
-
 def load_sound(filename, ocs_control):
   sound = scalpel.gtkui.app.edit.Sound(filename)
   player = scalpel.gtkui.app.player.Player(sound)
