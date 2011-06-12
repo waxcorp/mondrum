@@ -1,10 +1,12 @@
 import OSC
 import scalpel.gtkui
 import threading
+import time
 
 class OSCControl:
   def __init__(self, sound, player, graph, curs, sel, con, port=8000):
     self.start_osc_server(port)
+    self._state = 0
 
   def update(self, sound, player, graph, curs, sel, con):
     self._sound = sound
@@ -15,7 +17,9 @@ class OSCControl:
     self._controller = con
     self._graph.zoom_out_full()
     self._selection.select_all()
-    self._state = 0
+    self._start, self._end = self._selection.get()
+    t = threading.Thread(target=self.update_selection_loop)
+    t.start()
 
   def start_osc_server(self, port):
     s = OSC.ThreadingOSCServer(('localhost', port))
@@ -24,6 +28,10 @@ class OSCControl:
     s.addMsgHandler('/monome/enc/delta', self.osc_dispatch)
     t = threading.Thread(target=s.serve_forever)
     t.start()
+
+  def update_selection_loop(self):
+    while not time.sleep(.05):
+      self._selection.set(self._start, self._end)
 
   def osc_dispatch(self, pattern, tags, data, client_address):
     if pattern == '/monome/enc/delta':
@@ -34,24 +42,31 @@ class OSCControl:
         )
 
       elif self._state == 0:
-        start, end = self._selection.pixels()
+        start, end = self._selection.get()
+        v_start, v_end = self._graph.view()
+        v_width = v_end - v_start
+        mod_ratio = (v_width / 800.)
+
+        if data[1] > 0:
+          mod = int(abs(data[1]) * mod_ratio)
+        else:
+          mod = -int(abs(data[1]) * mod_ratio)
 
         if data[0] == 0:
-          start += data[1]
+          start += mod
           if start < 0:
             start = 0
-          self._selection.move_start_to_pixel(start)
+          self._start = start
 
         elif data[0] == 1:
-          end += data[1]
-          if self._graph.pxltofrm(end) > self._graph.numframes():
-            end = self._graph.frmtopxl(self._graph.numframes())
+          end += mod
+          if end > self._graph.numframes():
+            end = self._graph.numframes()
 
-          self._selection.move_end_to_pixel(end)
+          self._end = end
 
     elif pattern == '/monome/enc/key':
       self._state = data[1]
-
 
 def load_sound(filename, ocs_control):
   sound = scalpel.gtkui.app.edit.Sound(filename)
