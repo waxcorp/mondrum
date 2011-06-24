@@ -90,6 +90,13 @@ class MonomeCutInterface:
     self.selection_one = None
     self.selection_two = None
 
+  def start_osc_server(self):
+    s = OSC.ThreadingOSCServer(('127.0.0.1', self.recv_port))
+    s.addDefaultHandlers()
+    s.addMsgHandler('/monome/grid/key', self.osc_dispatch)
+    t = threading.Thread(target=s.serve_forever)
+    t.start()
+
   def set_page(self, page_id=None):
     if self.selected_button_coords:
       print 'WARN: cannot change pages while selection is active'
@@ -107,13 +114,6 @@ class MonomeCutInterface:
     index_on_page = self.playable_button_coords.index(coord)
 
     return (self.page_id * self.playable_button_coords) + index_on_page
-
-  def start_osc_server(self):
-    s = OSC.ThreadingOSCServer(('127.0.0.1', self.recv_port))
-    s.addDefaultHandlers()
-    s.addMsgHandler('/monome/grid/key', self.osc_dispatch)
-    t = threading.Thread(target=s.serve_forever)
-    t.start()
 
   def osc_dispatch(self, pattern, tags, data, client_address):
     if pattern == '/monome/grid/key':
