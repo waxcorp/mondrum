@@ -5,8 +5,8 @@ import time
 import sys
 
 class OSCControl:
-  def __init__(self, sound, player, graph, curs, sel, con, port=8000):
-    self.start_osc_server(port)
+  def __init__(self, sound, player, graph, curs, sel, con, recv_port=8000):
+    self.start_osc_server(recv_port)
     self._state = 0
 
   def update(self, sound, player, graph, curs, sel, con):
@@ -71,7 +71,7 @@ class OSCControl:
 
 
 class MonomeCutInterface:
-  def __init__(self, xmit_host='127.0.0.1', xmit_port=8000, recv_port=9000,
+  def __init__(self, xmit_host='127.0.0.1', xmit_port=9500, recv_port=9000,
                model=64):
     self.xmit_host = xmit_host
     self.xmit_port = xmit_port
@@ -231,8 +231,19 @@ class MonomeCutInterface:
     )
 
 
+class MockOSCDevice:
+  def __init__(self, recv_port, xmit_port):
+    self.osc_server = OSC.ThreadingOSCServer(('localhost', recv_port))
+    self.osc_client = self.osc_server.client
+    t = threading.Thread(target=self.osc_server.serve_forever)
+    t.start()
+
+
 if __name__ == '__main__':
   filename = '/Users/josh/tmp/5_gongs.wav'
+
+  mock_monome = MockOSCDevice(9500, 10500)
+  mock_arc = MockOSCDevice(9600, 10600)
 
   osc_control = OSCControl(None, None, None, None, None, None)
   monome_cut_interface = MonomeCutInterface()
