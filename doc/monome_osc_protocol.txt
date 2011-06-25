@@ -165,16 +165,16 @@ pattern:  /sys/query s n
 desc:     device information
 serial:   [0x00, s, n]
 args:     s = subsection, enumerated as strings [
-           null,
-	   "led-grid",
-	   "key-grid",
-	   "digital-out",
-	   "digital-in",
-	   "encoder",
-	   "analog-in",
-	   "analog-out",
-	   "tilt",
-	   "led-ring"
+            null,
+	    "led-grid",
+	    "key-grid",
+	    "digital-out",
+	    "digital-in",
+	    "encoder",
+	    "analog-in",
+	    "analog-out",
+	    "tilt",
+	    "led-ring"
           ]
           n = number
 
