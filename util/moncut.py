@@ -1,8 +1,9 @@
 import OSC
+import gtk
 import scalpel.gtkui
+import sys
 import threading
 import time
-import sys
 
 class OSCControl:
   def __init__(self, sound, player, graph, curs, sel, con, recv_port=8000):
@@ -191,7 +192,7 @@ class MonomeCutInterface:
         time.sleep(0.5)
 
   def set_level(self, coords, level):
-    msg = OSC.OSCMessage('/monome/grid/led/level/set')
+    msg = OSC.OSCMessage('/monome/grid/led/set')
     msg.append(coords[0])
     msg.append(coords[1])
     msg.append(level)
@@ -231,19 +232,79 @@ class MonomeCutInterface:
     )
 
 
-class MockOSCDevice:
-  def __init__(self, recv_port, xmit_port):
-    self.osc_server = OSC.ThreadingOSCServer(('localhost', recv_port))
-    self.osc_client = self.osc_server.client
-    t = threading.Thread(target=self.osc_server.serve_forever)
+class MockMonome(gtk.Window):
+  def __init__(self, height, width, recv_port, parent=None):
+    self.recv_port = recv_port
+    self.buttons = {}
+
+    # Create the toplevel window
+    gtk.Window.__init__(self)
+
+    try:
+      self.set_screen(parent.get_screen())
+    except AttributeError:
+      self.connect('destroy', lambda *w: gtk.main_quit())
+
+    self.set_title(self.__class__.__name__)
+    self.set_border_width(10)
+
+    main_vbox = gtk.VBox()
+    self.add(main_vbox)
+
+    frame_horiz = gtk.Frame(str(recv_port))
+    main_vbox.pack_start(frame_horiz, padding=10)
+
+    vbox = gtk.VBox()
+    vbox.set_border_width(10)
+    frame_horiz.add(vbox)
+
+    for y in sorted(range(height), reverse=True):
+      vbox.pack_start(self.create_bbox(y, width), padding=0)
+
+    self.show_all()
+
+  def create_bbox(self, y, width, title=None, spacing=0,
+                  layout=gtk.BUTTONBOX_SPREAD):
+    frame = gtk.Frame(title)
+    bbox = gtk.HButtonBox()
+    bbox.set_border_width(5)
+    bbox.set_layout(layout)
+    bbox.set_spacing(spacing)
+    frame.add(bbox)
+
+    for x in range(width):
+      button = self.buttons[(x, y)] = gtk.Button(label='0')
+      bbox.add(button)
+
+    return frame
+
+
+class MockMonomeOSCControl:
+  def __init__(self, mock_monome):
+    self.mock_monome = mock_monome
+    self.start_osc_server()
+
+  def start_osc_server(self):
+    s = OSC.ThreadingOSCServer(('127.0.0.1', self.mock_monome.recv_port))
+    s.addDefaultHandlers()
+    s.addMsgHandler('/monome/grid/led/set', self.osc_dispatch)
+    t = threading.Thread(target=s.serve_forever)
     t.start()
+
+  def osc_dispatch(self, pattern, tags, data, client_address):
+    if pattern == '/monome/grid/led/set':
+      print data
+      self.set_led(*data)
+
+  def set_led(self, x, y, level):
+    self.mock_monome.buttons[(x, y)].set_label(str(level))
 
 
 if __name__ == '__main__':
   filename = '/Users/josh/tmp/5_gongs.wav'
 
-  mock_monome = MockOSCDevice(9500, 10500)
-  mock_arc = MockOSCDevice(9600, 10600)
+  mock_monome = MockMonome(8, 8, 9500)
+  mock_monome_osc_control = MockMonomeOSCControl(mock_monome)
 
   osc_control = OSCControl(None, None, None, None, None, None)
   monome_cut_interface = MonomeCutInterface()
