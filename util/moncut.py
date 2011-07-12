@@ -94,6 +94,9 @@ class MonomeCutInterface:
     self.blink_thread.start()
     self.selection_one = None
     self.selection_two = None
+    self.control_panel_map = {
+      (7, 0): self._clear_selection
+    }
 
   def start_osc_server(self):
     s = OSC.ThreadingOSCServer(('127.0.0.1', self.recv_port))
@@ -161,7 +164,10 @@ class MonomeCutInterface:
           self.set_page(self.page_button_coords.index(coord))
 
         else:
-          print 'unknown button:', data
+          if coord in self.control_panel_map:
+            self.control_panel_map[coord]()
+          else:
+            print 'unknown button:', data
 
   def _start_selection(self, coord):
     print 'starting selection'
@@ -183,8 +189,9 @@ class MonomeCutInterface:
   def _clear_selection(self):
     print 'clearing selection'
     self.selection_one, self.selection_two = None, None
-    self.selected_button_coords = ()
     self.blink.clear()
+    self.set_levels(self.selected_button_coords, 0)
+    self.selected_button_coords = ()
 
   def play_coord(self, data):
     print 'would play data', data
