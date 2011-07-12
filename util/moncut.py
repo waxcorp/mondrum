@@ -1,12 +1,16 @@
 import OSC
+import gobject
 import gtk
 import scalpel.gtkui
 import sys
 import threading
 import time
 
+gtk.gdk.threads_init()
+
+
 class OSCControl:
-  def __init__(self, sound, player, graph, curs, sel, con, recv_port=8000):
+  def __init__(self, sound, player, graph, curs, sel, con, recv_port=8001):
     self.start_osc_server(recv_port)
     self._state = 0
 
@@ -72,7 +76,7 @@ class OSCControl:
 
 
 class MonomeCutInterface:
-  def __init__(self, xmit_host='127.0.0.1', xmit_port=9500, recv_port=9000,
+  def __init__(self, xmit_host='127.0.0.1', xmit_port=17448, recv_port=8000,
                model=64):
     self.xmit_host = xmit_host
     self.xmit_port = xmit_port
@@ -81,8 +85,6 @@ class MonomeCutInterface:
     self.page_button_coords, self.block_audio_selection = self.setup_model()
     self.page_id = 0
     self.start_osc_server()
-    self.osc_client = OSC.OSCClient()
-    self.osc_client.connect((xmit_host, xmit_port))
     self.selected_button_coords = ()
     self.set_page()
     self.blink = False
@@ -97,6 +99,7 @@ class MonomeCutInterface:
     s.addMsgHandler('/monome/grid/key', self.osc_dispatch)
     t = threading.Thread(target=s.serve_forever)
     t.start()
+    self.osc_client = s.client
 
   def set_page(self, page_id=None):
     if self.selected_button_coords:
@@ -118,7 +121,7 @@ class MonomeCutInterface:
 
   def osc_dispatch(self, pattern, tags, data, client_address):
     if pattern == '/monome/grid/key':
-      state, coord = data[0], tuple(data[1])
+      coord, state = tuple(data[:2]), data[2]
 
       if state is 1:
         if coord in self.playable_button_coords:
@@ -128,41 +131,63 @@ class MonomeCutInterface:
             else:
               print 'not in selection:', data
 
+          if self.selection_one is None:
+            print 'starting selection'
+            self.selection_one = coord
+            self.selected_button_coords = (coord,)
+            self.blink = True
+
           else:
-            if self.selection_one is None:
-              self.selected_button_coords = self.selection_one = coord
-              self.blink = True
+            if self.selection_two is None:
+              if coord == self.selection_one:
+                print 'disable blink'
+                self.selection_one = None
+                self.selected_button_coords = ()
+                self.blink = False
+                return None
 
-            else:
-              if self.selection_two is None:
-                if self.selection_two is self.selection_one:
-                  return None
-
+              else:
+                print 'select block'
                 self.selection_two = coord
                 self.selected_button_coords = self.coords_in_block(
                   *list(self.selection_one) + list(self.selection_two)
                 )
 
+            else:
+              if self.blink is True:
+                if coord == self.selection_two:
+                  self.blink = False
+                  for c in self.selected_button_coords:
+                    self.set_level(c, 15)
+                  self.set_up_block_audio_selection()
+
               else:
-                if self.blink is True:
-                  if self.selection_two == coord:
-                    self.blink = False
-                    self.set_up_block_audio_selection()
+                if coord == self.selection_two:
+                  self.blink = True
 
                 else:
-                  self.play_button(data)
+                  self.selection_two = coord
+                  self.selected_button_coords = self.coords_in_block(
+                    *list(self.selection_one) + list(self.selection_two)
+                  )
+
+                print 'would play button'
+                #self.play_button(data)
 
         elif coord in self.page_button_coords:
-          self.set_page(self.page_id_coords.index(coord))
+          self.set_page(self.page_button_coords.index(coord))
 
         else:
           print 'unknown button:', data
 
+  def play_coord(self, data):
+    print 'would play data', data
+
   def set_up_block_audio_selection(self):
-    pass
+    print 'would set up block audio selection'
 
   def play_button(self, data):
-    self.selection.get()
+    print self.sel.get()
 
   def coords_in_block(self, ax, ay, bx, by):
     buttons = []
@@ -182,21 +207,24 @@ class MonomeCutInterface:
 
   def blink_loop(self):
     while not time.sleep(0.05):
-      while self.blink:
-        print 'blinking'
-        for coord in self.selected_button_coords:
+      if self.blink:
+        print 'blinking', time.time()
+        coords = self.selected_button_coords
+
+        for coord in coords:
           self.set_level(coord, 15)
         time.sleep(0.5)
-        for coord in self.selected_button_coords:
+
+        for coord in coords:
           self.set_level(coord, 0)
         time.sleep(0.5)
 
-  def set_level(self, coords, level):
+  def set_level(self, coord, level):
     msg = OSC.OSCMessage('/monome/grid/led/set')
-    msg.append(coords[0])
-    msg.append(coords[1])
+    msg.append(coord[0])
+    msg.append(coord[1])
     msg.append(level)
-    self.osc_client.send(msg)
+    self.osc_client.sendto(msg, (self.xmit_host, self.xmit_port))
 
   def show_block(self, ax, ay, bx, by):
     block_buttons = self.coords_in_block(ax, ay, bx, by)
@@ -210,7 +238,7 @@ class MonomeCutInterface:
           sys.stdout.write('0 ')
       print
 
-  def load_sound(self, filename, ocs_control):
+  def load_sound(self, filename, osc_control):
     self.filename = filename
     self.osc_control = osc_control
     self.sound = scalpel.gtkui.app.edit.Sound(filename)
@@ -233,17 +261,19 @@ class MonomeCutInterface:
 
 
 class MockMonome(gtk.Window):
-  def __init__(self, height, width, recv_port, parent=None):
+  def __init__(self, height=8, width=8, recv_port=9500, xmit_port=9000):
+    self.height = height
+    self.width = width
     self.recv_port = recv_port
+    self.xmit_port = xmit_port
     self.buttons = {}
 
+    self.start_osc_server()
+    self.setup_gtk_window()
+
+  def setup_gtk_window(self):
     # Create the toplevel window
     gtk.Window.__init__(self)
-
-    try:
-      self.set_screen(parent.get_screen())
-    except AttributeError:
-      self.connect('destroy', lambda *w: gtk.main_quit())
 
     self.set_title(self.__class__.__name__)
     self.set_border_width(10)
@@ -251,60 +281,66 @@ class MockMonome(gtk.Window):
     main_vbox = gtk.VBox()
     self.add(main_vbox)
 
-    frame_horiz = gtk.Frame(str(recv_port))
+    frame_horiz = gtk.Frame(str(self.recv_port))
     main_vbox.pack_start(frame_horiz, padding=10)
 
     vbox = gtk.VBox()
     vbox.set_border_width(10)
     frame_horiz.add(vbox)
 
-    for y in sorted(range(height), reverse=True):
-      vbox.pack_start(self.create_bbox(y, width), padding=0)
+    for y in sorted(range(self.height), reverse=True):
+      vbox.pack_start(self.create_button_row(y), padding=0)
 
     self.show_all()
 
-  def create_bbox(self, y, width, title=None, spacing=0,
-                  layout=gtk.BUTTONBOX_SPREAD):
-    frame = gtk.Frame(title)
+  def create_button_row(self, y):
+    frame = gtk.Frame(None)
     bbox = gtk.HButtonBox()
     bbox.set_border_width(5)
-    bbox.set_layout(layout)
-    bbox.set_spacing(spacing)
+    bbox.set_layout(gtk.BUTTONBOX_SPREAD)
+    bbox.set_spacing(0)
     frame.add(bbox)
+    print 'adding', bbox
 
-    for x in range(width):
+    for x in range(self.width):
       button = self.buttons[(x, y)] = gtk.Button(label='0')
+      button.set_name('%d_%d' % (x, y))
+      button.connect('pressed', self.pressed)
+      button.connect('released', self.released)
       bbox.add(button)
 
     return frame
 
+  def pressed(self, button):
+    dat = [ int(x) for x in button.name.split('_') ] + [1]
+    msg = OSC.OSCMessage('/monome/grid/key') + dat
+    self.osc_client.sendto(msg, ('127.0.0.1', self.xmit_port))
 
-class MockMonomeOSCControl:
-  def __init__(self, mock_monome):
-    self.mock_monome = mock_monome
-    self.start_osc_server()
+  def released(self, button):
+    dat = [ int(x) for x in button.name.split('_') ] + [0]
+    msg = OSC.OSCMessage('/monome/grid/key') + dat
+    self.osc_client.sendto(msg, ('127.0.0.1', self.xmit_port))
 
   def start_osc_server(self):
-    s = OSC.ThreadingOSCServer(('127.0.0.1', self.mock_monome.recv_port))
+    s = OSC.ThreadingOSCServer(('127.0.0.1', self.recv_port))
     s.addDefaultHandlers()
     s.addMsgHandler('/monome/grid/led/set', self.osc_dispatch)
     t = threading.Thread(target=s.serve_forever)
     t.start()
+    self.osc_client = s.client
 
   def osc_dispatch(self, pattern, tags, data, client_address):
     if pattern == '/monome/grid/led/set':
-      print data
-      self.set_led(*data)
+      gobject.idle_add(self.set_led, *data)
 
   def set_led(self, x, y, level):
-    self.mock_monome.buttons[(x, y)].set_label(str(level))
+    self.buttons[(x, y)].set_label(str(level))
 
 
 if __name__ == '__main__':
   filename = '/Users/josh/tmp/5_gongs.wav'
 
-  mock_monome = MockMonome(8, 8, 9500)
-  mock_monome_osc_control = MockMonomeOSCControl(mock_monome)
+  #mock_monome = MockMonome(recv_port=17448, xmit_port=8000)
 
   osc_control = OSCControl(None, None, None, None, None, None)
   monome_cut_interface = MonomeCutInterface()
