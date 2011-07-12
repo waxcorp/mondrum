@@ -111,9 +111,7 @@ class MonomeCutInterface:
     if page_id is not None:
       self.page_id = page_id
 
-    for coord in self.page_button_coords:
-      self.set_level(coord, 0)
-
+    self.set_levels(self.page_button_coords, 0)
     self.set_level(self.page_button_coords[self.page_id], 15)
 
   def coord_to_pad_id(self, coord):
@@ -143,8 +141,6 @@ class MonomeCutInterface:
             else:
               if self.blink.is_set():
                 if coord == self.selection_two:
-                  self.blink.clear()
-                  self.set_levels(self.selected_button_coords, 15)
                   self._set_up_block_audio_selection()
 
               else:
@@ -194,6 +190,8 @@ class MonomeCutInterface:
     print 'would play data', data
 
   def _set_up_block_audio_selection(self):
+    self.blink.clear()
+    self.set_levels(self.selected_button_coords, 15)
     print 'would set up block audio selection'
 
   def play_button(self, data):
@@ -247,7 +245,7 @@ class MonomeCutInterface:
 
   def set_levels(self, coords, level):
     for coord in coords:
-       self.set_level(coord, level)
+      self.set_level(coord, level)
 
   def set_level(self, coord, level):
     msg = OSC.OSCMessage('/monome/grid/led/set')
