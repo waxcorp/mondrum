@@ -254,18 +254,6 @@ class MonomeCutInterface:
     msg += list(coord) + [level]
     self.osc_client.sendto(msg, (self.xmit_host, self.xmit_port))
 
-  def show_block(self, ax, ay, bx, by):
-    block_buttons = self.coords_in_block(ax, ay, bx, by)
-
-    for y in sorted(range(self.y_size), reverse=True):
-      for x in sorted(range(self.x_size)):
-        if (x, y) in block_buttons:
-          sys.stdout.write('1 ')
-          time.sleep(0.2)
-        else:
-          sys.stdout.write('0 ')
-      print
-
   def load_sound(self, filename, osc_control):
     self.filename = filename
     self.osc_control = osc_control
