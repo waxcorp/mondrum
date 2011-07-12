@@ -85,9 +85,11 @@ class MonomeCutInterface:
     self.page_button_coords, self.block_audio_selection = self.setup_model()
     self.page_id = 0
     self.start_osc_server()
+    self.set_level_all(0)
     self.selected_button_coords = ()
     self.set_page()
-    self.blink = False
+    self.blink = threading.Event()
+    self.blink_on = threading.Event()
     self.blink_thread = threading.Thread(target=self.blink_loop)
     self.blink_thread.start()
     self.selection_one = None
@@ -106,7 +108,7 @@ class MonomeCutInterface:
       print 'WARN: cannot change pages while selection is active'
       return None
 
-    if page_id:
+    if page_id is not None:
       self.page_id = page_id
 
     for coord in self.page_button_coords:
@@ -132,39 +134,24 @@ class MonomeCutInterface:
               print 'not in selection:', data
 
           if self.selection_one is None:
-            print 'starting selection'
-            self.selection_one = coord
-            self.selected_button_coords = (coord,)
-            self.blink = True
+            return self._start_selection(coord)
 
           else:
             if self.selection_two is None:
-              if coord == self.selection_one:
-                print 'disable blink'
-                self.selection_one = None
-                self.selected_button_coords = ()
-                self.blink = False
-                return None
-
-              else:
-                print 'select block'
-                self.selection_two = coord
-                self.selected_button_coords = self.coords_in_block(
-                  *list(self.selection_one) + list(self.selection_two)
-                )
+              return self._complete_or_clear_selection(coord)
 
             else:
-              if self.blink is True:
+              if self.blink.is_set():
                 if coord == self.selection_two:
-                  self.blink = False
-                  for c in self.selected_button_coords:
-                    self.set_level(c, 15)
-                  self.set_up_block_audio_selection()
+                  self.blink.clear()
+                  self.set_levels(self.selected_button_coords, 15)
+                  self._set_up_block_audio_selection()
 
               else:
                 if coord == self.selection_two:
-                  self.blink = True
-
+                  self.blink.set()
+                  self.blink_on.clear()
+                  self.set_levels(self.selected_button_coords, 0)
                 else:
                   self.selection_two = coord
                   self.selected_button_coords = self.coords_in_block(
@@ -180,10 +167,33 @@ class MonomeCutInterface:
         else:
           print 'unknown button:', data
 
+  def _start_selection(self, coord):
+    print 'starting selection'
+    self.selection_one = coord
+    self.selected_button_coords = (coord,)
+    self.blink.set()
+
+  def _complete_or_clear_selection(self, coord):
+    if coord == self.selection_one:
+      self._clear_selection()
+    else:
+      print 'select block'
+      self.selection_two = coord
+      self.selected_button_coords = self.coords_in_block(
+        *list(self.selection_one) + list(self.selection_two)
+      )
+      self.set_levels(self.selected_button_coords, 15)
+
+  def _clear_selection(self):
+    print 'clearing selection'
+    self.selection_one, self.selection_two = None, None
+    self.selected_button_coords = ()
+    self.blink.clear()
+
   def play_coord(self, data):
     print 'would play data', data
 
-  def set_up_block_audio_selection(self):
+  def _set_up_block_audio_selection(self):
     print 'would set up block audio selection'
 
   def play_button(self, data):
@@ -202,28 +212,46 @@ class MonomeCutInterface:
       self.x_size = 8
       self.y_size = 8
       self.playable_button_coords = self.coords_in_block(0, 7, 7, 3)
-      pbc = self.coords_in_block(0, 2, 7, 2)
-      return (pbc, dict(map(lambda x: (x, {}), pbc)))
+      pbc = reversed(list(self.coords_in_block(0, 2, 7, 2)))
+      return (tuple(pbc), dict(map(lambda x: (x, {}), pbc)))
 
   def blink_loop(self):
-    while not time.sleep(0.05):
-      if self.blink:
-        print 'blinking', time.time()
-        coords = self.selected_button_coords
+    self.blink_on.set()
+    while True:
+      self.blink.wait()
+      print 'blinking', time.time()
 
-        for coord in coords:
-          self.set_level(coord, 15)
-        time.sleep(0.5)
+      if self.blink_on.is_set():
+        self.set_levels(self.selected_button_coords, 15)
 
-        for coord in coords:
-          self.set_level(coord, 0)
-        time.sleep(0.5)
+      for x in range(500):
+        if self.blink_on.is_set():
+          time.sleep(0.001)
+        else:
+          break
+
+      if self.blink.is_set():
+        self.blink_on.set()
+        self.set_levels(self.selected_button_coords, 0)
+
+      for x in range(500):
+        if self.blink.is_set():
+          time.sleep(0.001)
+        else:
+          break
+
+  def set_level_all(self, level):
+    msg = OSC.OSCMessage('/monome/grid/led/all')
+    msg.append(level)
+    self.osc_client.sendto(msg, (self.xmit_host, self.xmit_port))
+
+  def set_levels(self, coords, level):
+    for coord in coords:
+       self.set_level(coord, level)
 
   def set_level(self, coord, level):
     msg = OSC.OSCMessage('/monome/grid/led/set')
-    msg.append(coord[0])
-    msg.append(coord[1])
-    msg.append(level)
+    msg += list(coord) + [level]
     self.osc_client.sendto(msg, (self.xmit_host, self.xmit_port))
 
   def show_block(self, ax, ay, bx, by):
@@ -341,6 +369,9 @@ if __name__ == '__main__':
   filename = '/Users/josh/tmp/5_gongs.wav'
 
   #mock_monome = MockMonome(recv_port=17448, xmit_port=8000)
+
+  # to set up the remote device port create an OSCClient as c and do:
+  # c.sendto(OSC.OSCMessage('/sys/port') + 8001,  ('127.0.0.1', 17441))
 
   osc_control = OSCControl(None, None, None, None, None, None)
   monome_cut_interface = MonomeCutInterface()
