@@ -9,21 +9,31 @@ import time
 gtk.gdk.threads_init()
 
 
-class OSCControl:
-  def __init__(self, sound, player, graph, curs, sel, con, recv_port=8001):
+class GTKSound:
+  def __init__(self, recv_port=8001):
     self.start_osc_server(recv_port)
     self._state = 0
 
-  def update(self, sound, player, graph, curs, sel, con):
-    self._sound = sound
-    self._player = player
-    self._graph = graph
-    self._curs = curs
-    self._selection = sel
-    self._controller = con
-    self._graph.zoom_out_full()
-    self._selection.select_all()
-    self._start, self._end = self._selection.get()
+  def load_file(self, filename):
+    self.filename = filename
+    self.sound = scalpel.gtkui.app.edit.Sound(filename)
+    self.player = scalpel.gtkui.app.player.Player(self.sound)
+    self.graph = scalpel.gtkui.app.graphmodel.Graph(self.sound)
+    self.cursor = scalpel.gtkui.app.cursor.Cursor(self.graph, self.player)
+    self.selection = scalpel.gtkui.app.selection.Selection(
+      self.graph, self.cursor
+    )
+    self.controller = scalpel.gtkui.app.control.Controller(
+      self.sound, self.player, self.graph, self.selection
+    )
+    scalpel.gtkui.app.new_sound_loaded(
+      self.controller, self.graph, self.selection, self.cursor
+    )
+
+    self.graph.zoom_out_full()
+    self.selection.select_all()
+    self._start, self._end = self.selection.get()
+
     t = threading.Thread(target=self.update_selection_loop)
     t.start()
 
@@ -37,19 +47,22 @@ class OSCControl:
 
   def update_selection_loop(self):
     while not time.sleep(.05):
-      self._selection.set(self._start, self._end)
+      try:
+        self.selection.set(self._start, self._end)
+      except:
+        pass
 
   def osc_dispatch(self, pattern, tags, data, client_address):
     if pattern == '/monome/enc/delta':
       if self._state == 1:
-        self._graph.zoom_on(
-          self._selection.pixels()[data[0]],
+        self.graph.zoom_on(
+          self.selection.pixels()[data[0]],
           (100 - data[1]) / 100.
         )
 
       elif self._state == 0:
-        start, end = self._selection.get()
-        v_start, v_end = self._graph.view()
+        start, end = self.selection.get()
+        v_start, v_end = self.graph.view()
         v_width = v_end - v_start
         mod_ratio = (v_width / 800.)
 
@@ -66,8 +79,8 @@ class OSCControl:
 
         elif data[0] == 1:
           end += mod
-          if end > self._graph.numframes():
-            end = self._graph.numframes()
+          if end > self.graph.numframes():
+            end = self.graph.numframes()
 
           self._end = end
 
@@ -82,7 +95,7 @@ class MonomeCutInterface:
     self.xmit_port = xmit_port
     self.recv_port = recv_port
     self.model = model
-    self.page_button_coords, self.block_audio_selection = self.setup_model()
+    self.setup_model()
     self.page_id = 0
     self.start_osc_server()
     self.set_level_all(0)
@@ -95,8 +108,11 @@ class MonomeCutInterface:
     self.selection_one = None
     self.selection_two = None
     self.control_panel_map = {
-      (7, 0): self._clear_selection
+      (7, 0): self._clear_selection,
+      (7, 1): self._apply_selection,
     }
+    self.selections = {}
+    self.gtk_sound = GTKSound()
 
   def start_osc_server(self):
     s = OSC.ThreadingOSCServer(('127.0.0.1', self.recv_port))
@@ -139,26 +155,17 @@ class MonomeCutInterface:
 
           else:
             if self.selection_two is None:
-              return self._complete_or_clear_selection(coord)
+              return self._make_or_clear_selection(coord)
 
             else:
               if self.blink.is_set():
                 if coord == self.selection_two:
-                  self._set_up_block_audio_selection()
+                  self._apply_selection()
+                else:
+                  self._make_or_clear_selection(coord)
 
               else:
-                if coord == self.selection_two:
-                  self.blink.set()
-                  self.blink_on.clear()
-                  self.set_levels(self.selected_button_coords, 0)
-                else:
-                  self.selection_two = coord
-                  self.selected_button_coords = self.coords_in_block(
-                    *list(self.selection_one) + list(self.selection_two)
-                  )
-
                 print 'would play button'
-                #self.play_button(data)
 
         elif coord in self.page_button_coords:
           self.set_page(self.page_button_coords.index(coord))
@@ -175,7 +182,8 @@ class MonomeCutInterface:
     self.selected_button_coords = (coord,)
     self.blink.set()
 
-  def _complete_or_clear_selection(self, coord):
+  def _make_or_clear_selection(self, coord):
+    self.set_levels(self.selected_button_coords, 0)
     if coord == self.selection_one:
       self._clear_selection()
     else:
@@ -189,20 +197,32 @@ class MonomeCutInterface:
   def _clear_selection(self):
     print 'clearing selection'
     self.selection_one, self.selection_two = None, None
-    self.blink.clear()
+    if self.blink.is_set():
+      self.blink.clear()
     self.set_levels(self.selected_button_coords, 0)
     self.selected_button_coords = ()
+
+  def _apply_selection(self):
+    print 'applying selection'
+    if self.blink.is_set():
+      self.blink.clear()
+    self.set_levels(self.selected_button_coords, 5)
+    self._record_selection()
+    self._clear_selection()
+
+  def _record_selection(self):
+    print self._selection_slice_indices()
+    self.gtk_sound.controller.play()
+
+  def _selection_slice_indices(self):
+    len(self.selected_button_coords)
+    return self.gtk_sound.selection.get()
 
   def play_coord(self, data):
     print 'would play data', data
 
-  def _set_up_block_audio_selection(self):
-    self.blink.clear()
-    self.set_levels(self.selected_button_coords, 15)
-    print 'would set up block audio selection'
-
   def play_button(self, data):
-    print self.sel.get()
+    print self.gsel.get()
 
   def coords_in_block(self, ax, ay, bx, by):
     buttons = []
@@ -210,15 +230,14 @@ class MonomeCutInterface:
       for x in range(sorted((ax, bx))[0], sorted((ax, bx))[1] + 1):
         buttons.append((x, y))
 
-    return tuple(sorted(buttons, key=lambda x: x[1], reverse=True))
+    return tuple(sorted(buttons, key=lambda x: (x[1], x[0]), reverse=True))
 
   def setup_model(self):
     if self.model == 64:
       self.x_size = 8
       self.y_size = 8
       self.playable_button_coords = self.coords_in_block(0, 7, 7, 3)
-      pbc = reversed(list(self.coords_in_block(0, 2, 7, 2)))
-      return (tuple(pbc), dict(map(lambda x: (x, {}), pbc)))
+      self.page_button_coords = self.coords_in_block(0, 2, 7, 2)
 
   def blink_loop(self):
     self.blink_on.set()
@@ -258,27 +277,6 @@ class MonomeCutInterface:
     msg = OSC.OSCMessage('/monome/grid/led/set')
     msg += list(coord) + [level]
     self.osc_client.sendto(msg, (self.xmit_host, self.xmit_port))
-
-  def load_sound(self, filename, osc_control):
-    self.filename = filename
-    self.osc_control = osc_control
-    self.sound = scalpel.gtkui.app.edit.Sound(filename)
-    self.player = scalpel.gtkui.app.player.Player(self.sound)
-    self.graph = scalpel.gtkui.app.graphmodel.Graph(self.sound)
-    self.curs = scalpel.gtkui.app.cursor.Cursor(self.graph, self.player)
-    self.sel = scalpel.gtkui.app.selection.Selection(self.graph, self.curs)
-
-    self.con = scalpel.gtkui.app.control.Controller(
-      self.sound, self.player, self.graph, self.sel
-    )
-
-    scalpel.gtkui.app.new_sound_loaded(
-      self.con, self.graph, self.sel, self.curs
-    )
-
-    self.osc_control.update(
-      self.sound, self.player, self.graph, self.curs, self.sel, self.con
-    )
 
 
 class MockMonome(gtk.Window):
@@ -366,8 +364,7 @@ if __name__ == '__main__':
   # to set up the remote device port create an OSCClient as c and do:
   # c.sendto(OSC.OSCMessage('/sys/port') + 8001,  ('127.0.0.1', 17441))
 
-  osc_control = OSCControl(None, None, None, None, None, None)
   monome_cut_interface = MonomeCutInterface()
-  monome_cut_interface.load_sound(filename, osc_control)
+  monome_cut_interface.gtk_sound.load_file(filename)
 
   scalpel.gtkui.main_loop()
