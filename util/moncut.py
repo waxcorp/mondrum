@@ -1,7 +1,8 @@
 import OSC
 import gobject
 import gtk
-import multiprocessing
+import itertools
+import os
 import scalpel.gtkui
 import sys
 import threading
@@ -16,7 +17,7 @@ class GTKSound:
     self._state = 0
 
   def load_file(self, filename):
-    self.filename = filename
+    self.filename = os.path.realpath(filename)
     self.sound = scalpel.gtkui.app.edit.Sound(filename)
     self.player = scalpel.gtkui.app.player.Player(self.sound)
     self.graph = scalpel.gtkui.app.graphmodel.Graph(self.sound)
@@ -95,25 +96,26 @@ class MonomeCutInterface:
     self.xmit_host = xmit_host
     self.xmit_port = xmit_port
     self.recv_port = recv_port
+    self.recorded_selections = {}
+    self.current_selection = {}
+    self.current_selection['coord_one'] = None
+    self.current_selection['coord_two'] = None
+    self.current_selection['coords'] = ()
     self.model = model
     self.setup_model()
     self.page_id = 0
     self.start_osc_server()
     self.set_level_all(0)
-    self.recorded_selections = multiprocessing.Manager().dict()
-    self.current_selection = multiprocessing.Manager().dict()
-    self.set_page()
     self.blink = threading.Event()
     self.blink_on = threading.Event()
     self.blink_thread = threading.Thread(target=self.blink_loop)
     self.blink_thread.start()
-    self.current_selection['coord_one'] = None
-    self.current_selection['coord_two'] = None
     self.control_panel_map = {
       (7, 0): self._clear_selection,
       (7, 1): self._record_selection,
     }
     self.gtk_sound = GTKSound()
+    self.set_page()
 
   def start_osc_server(self):
     s = OSC.ThreadingOSCServer(('127.0.0.1', self.recv_port))
@@ -124,7 +126,7 @@ class MonomeCutInterface:
     self.osc_client = s.client
 
   def set_page(self, page_id=None):
-    if self.current_selection.get('coords'):
+    if self.current_selection['coords']:
       print 'WARN: cannot change pages while selection is active'
       return None
 
@@ -133,6 +135,7 @@ class MonomeCutInterface:
 
     self.set_levels(self.page_button_coords, 0)
     self.set_level(self.page_button_coords[self.page_id], 15)
+    self._clear_selection()
 
   def osc_dispatch(self, pattern, tags, data, client_address):
     if pattern == '/monome/grid/key':
@@ -140,8 +143,10 @@ class MonomeCutInterface:
 
       if state is 1:
         if coord in self.playable_button_coords:
-          if coord in self.current_selection.get('coords', []):
+          if coord in self.current_selection['coords']:
             self.play_coord(data)
+          elif coord in self.current_selection['coords']:
+            self._update_selection_with_recorded_block(coord)
           else:
             print 'not in selection:', data
 
@@ -194,7 +199,12 @@ class MonomeCutInterface:
     self.current_selection['coord_one'] = None
     self.current_selection['coord_two'] = None
     self.blink.clear()
-    self.set_levels(self.current_selection['coords'], 0)
+
+    self.set_levels(self.playable_button_coords, 0)
+    for block in self.recorded_selections[self.page_id]:
+      block_coord_list = list(itertools.chain(*block))
+      self.set_levels(self.coords_in_block(*block_coord_list), 5)
+
     self.current_selection['coords'] = ()
 
   def _update_selection(self, coord):
@@ -206,13 +216,45 @@ class MonomeCutInterface:
     self.blink.clear()
     self.set_levels(self.current_selection['coords'], 5)
 
-  def _record_selection(self):
-    print self._selection_slice_indices()
-    self._clear_selection()
+  def _update_selection_with_recorded_block(self, coord):
+    self.current_selection = {
+    }
 
-  def _selection_slice_indices(self):
-    len(self.current_selection['coords'])
-    return self.gtk_sound.selection.get()
+  def _record_selection(self):
+    print 'recording selection'
+
+    block_coords = (
+      self.current_selection['coords'][0:1][0],
+      self.current_selection['coords'][-1:][0],
+    )
+
+    self.recorded_selections[self.page_id].update({
+      block_coords: {
+        'filename': self.gtk_sound.filename,
+        'frames': self.current_selection['graph']['selection'],
+        'coords': {},
+      },
+    })
+
+    for coord in self.current_selection['coords']:
+      i = self.current_selection['coords'].index(coord)
+      self.recorded_selections[self.page_id][block_coords]['coords'][coord] = {
+        'frames': self._selection_slice_frames(i)
+      }
+
+    self._clear_selection()
+    import pprint
+    pprint.pprint(dict(self.recorded_selections))
+
+  def _selection_slice_frames(self, index):
+    frames = self.current_selection['graph']['selection']
+    len_frames = frames[1] - frames[0]
+    slice_size = len_frames / len(self.current_selection['coords'])
+
+    slice_start = (slice_size * index) + frames[0]
+    slice_end = frames[1]
+
+    return slice_start, slice_end
 
   def play_coord(self, data):
     print 'would play data', data
@@ -234,6 +276,9 @@ class MonomeCutInterface:
       self.y_size = 8
       self.playable_button_coords = self.coords_in_block(0, 7, 7, 3)
       self.page_button_coords = self.coords_in_block(0, 2, 7, 2)
+
+    for x in range(len(self.page_button_coords)):
+      self.recorded_selections[x] = {}
 
   def blink_loop(self):
     self.blink_on.set()
