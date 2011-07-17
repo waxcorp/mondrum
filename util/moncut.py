@@ -1,6 +1,7 @@
 import OSC
 import gobject
 import gtk
+import multiprocessing
 import scalpel.gtkui
 import sys
 import threading
@@ -99,19 +100,19 @@ class MonomeCutInterface:
     self.page_id = 0
     self.start_osc_server()
     self.set_level_all(0)
-    self.selected_button_coords = ()
+    self.recorded_selections = multiprocessing.Manager().dict()
+    self.current_selection = multiprocessing.Manager().dict()
     self.set_page()
     self.blink = threading.Event()
     self.blink_on = threading.Event()
     self.blink_thread = threading.Thread(target=self.blink_loop)
     self.blink_thread.start()
-    self.selection_one = None
-    self.selection_two = None
+    self.current_selection['coord_one'] = None
+    self.current_selection['coord_two'] = None
     self.control_panel_map = {
       (7, 0): self._clear_selection,
-      (7, 1): self._apply_selection,
+      (7, 1): self._record_selection,
     }
-    self.selections = {}
     self.gtk_sound = GTKSound()
 
   def start_osc_server(self):
@@ -123,7 +124,7 @@ class MonomeCutInterface:
     self.osc_client = s.client
 
   def set_page(self, page_id=None):
-    if self.selected_button_coords:
+    if self.current_selection.get('coords'):
       print 'WARN: cannot change pages while selection is active'
       return None
 
@@ -133,36 +134,32 @@ class MonomeCutInterface:
     self.set_levels(self.page_button_coords, 0)
     self.set_level(self.page_button_coords[self.page_id], 15)
 
-  def coord_to_pad_id(self, coord):
-    index_on_page = self.playable_button_coords.index(coord)
-
-    return (self.page_id * self.playable_button_coords) + index_on_page
-
   def osc_dispatch(self, pattern, tags, data, client_address):
     if pattern == '/monome/grid/key':
       coord, state = tuple(data[:2]), data[2]
 
       if state is 1:
         if coord in self.playable_button_coords:
-          if self.selected_button_coords:
-            if coord in self.selected_button_coords:
-              self.play_coord(data)
-            else:
-              print 'not in selection:', data
+          if coord in self.current_selection.get('coords', []):
+            self.play_coord(data)
+          else:
+            print 'not in selection:', data
 
-          if self.selection_one is None:
+          if self.current_selection['coord_one'] is None:
             return self._start_selection(coord)
 
           else:
-            if self.selection_two is None:
-              return self._make_or_clear_selection(coord)
+            if self.current_selection['coord_two'] is None:
+              return self._stage_selection(coord)
 
             else:
               if self.blink.is_set():
-                if coord == self.selection_two:
-                  self._apply_selection()
+                if coord == self.current_selection['coord_two']:
+                  self._update_selection(coord)
+                elif coord == self.current_selection['coord_one']:
+                  self._clear_selection()
                 else:
-                  self._make_or_clear_selection(coord)
+                  self._stage_selection(coord)
 
               else:
                 print 'would play button'
@@ -178,44 +175,43 @@ class MonomeCutInterface:
 
   def _start_selection(self, coord):
     print 'starting selection'
-    self.selection_one = coord
-    self.selected_button_coords = (coord,)
+    self.current_selection['coord_one'] = coord
+    self.current_selection['coords'] = (coord,)
     self.blink.set()
 
-  def _make_or_clear_selection(self, coord):
-    self.set_levels(self.selected_button_coords, 0)
-    if coord == self.selection_one:
-      self._clear_selection()
-    else:
-      print 'select block'
-      self.selection_two = coord
-      self.selected_button_coords = self.coords_in_block(
-        *list(self.selection_one) + list(self.selection_two)
-      )
-      self.set_levels(self.selected_button_coords, 15)
+  def _stage_selection(self, coord):
+    print 'staging current selection'
+    self.set_levels(self.current_selection['coords'], 0)
+    self.current_selection['coord_two'] = coord
+    self.current_selection['coords'] = self.coords_in_block(
+      *list(self.current_selection['coord_one']) + \
+       list(self.current_selection['coord_two'])
+    )
+    self.set_levels(self.current_selection['coords'], 15)
 
   def _clear_selection(self):
     print 'clearing selection'
-    self.selection_one, self.selection_two = None, None
-    if self.blink.is_set():
-      self.blink.clear()
-    self.set_levels(self.selected_button_coords, 0)
-    self.selected_button_coords = ()
+    self.current_selection['coord_one'] = None
+    self.current_selection['coord_two'] = None
+    self.blink.clear()
+    self.set_levels(self.current_selection['coords'], 0)
+    self.current_selection['coords'] = ()
 
-  def _apply_selection(self):
-    print 'applying selection'
-    if self.blink.is_set():
-      self.blink.clear()
-    self.set_levels(self.selected_button_coords, 5)
-    self._record_selection()
-    self._clear_selection()
+  def _update_selection(self, coord):
+    print 'updating current selection'
+    self.current_selection.update({
+      'graph': {'selection': self.gtk_sound.selection.get()},
+      'latest_coord': self.current_selection['coords'][0],
+    })
+    self.blink.clear()
+    self.set_levels(self.current_selection['coords'], 5)
 
   def _record_selection(self):
     print self._selection_slice_indices()
-    self.gtk_sound.controller.play()
+    self._clear_selection()
 
   def _selection_slice_indices(self):
-    len(self.selected_button_coords)
+    len(self.current_selection['coords'])
     return self.gtk_sound.selection.get()
 
   def play_coord(self, data):
@@ -243,10 +239,9 @@ class MonomeCutInterface:
     self.blink_on.set()
     while True:
       self.blink.wait()
-      print 'blinking', time.time()
 
       if self.blink_on.is_set():
-        self.set_levels(self.selected_button_coords, 15)
+        self.set_levels(self.current_selection['coords'], 15)
 
       for x in range(500):
         if self.blink_on.is_set():
@@ -256,7 +251,7 @@ class MonomeCutInterface:
 
       if self.blink.is_set():
         self.blink_on.set()
-        self.set_levels(self.selected_button_coords, 0)
+        self.set_levels(self.current_selection['coords'], 0)
 
       for x in range(500):
         if self.blink.is_set():
