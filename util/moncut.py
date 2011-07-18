@@ -3,6 +3,7 @@ import gobject
 import gtk
 import itertools
 import os
+import pprint
 import scalpel.gtkui
 import sys
 import threading
@@ -111,6 +112,7 @@ class MonomeCutInterface:
     self.blink_thread = threading.Thread(target=self.blink_loop)
     self.blink_thread.start()
     self.control_panel_map = {
+      (6, 0): self._edit_recorded_selection,
       (7, 0): self._clear_selection,
       (7, 1): self._record_selection,
     }
@@ -140,23 +142,22 @@ class MonomeCutInterface:
   def osc_dispatch(self, pattern, tags, data, client_address):
     if pattern == '/monome/grid/key':
       coord, state = tuple(data[:2]), data[2]
+      self.button_states[coord] = state
 
       if state is 1:
         if coord in self.playable_button_coords:
           if coord in self.current_selection['coords']:
             self.play_coord(data)
-          elif coord in self.current_selection['coords']:
-            self._update_selection_with_recorded_block(coord)
-          else:
-            print 'not in selection:', data
+          elif self._recorded_selection_for_coord(coord):
+            if self.button_states[(6, 0)] is 1:
+              self._update_selection_with_prerecorded_block(coord)
+            return self.play_coord(data)
 
           if self.current_selection['coord_one'] is None:
             return self._start_selection(coord)
-
           else:
             if self.current_selection['coord_two'] is None:
               return self._stage_selection(coord)
-
             else:
               if self.blink.is_set():
                 if coord == self.current_selection['coord_two']:
@@ -165,7 +166,6 @@ class MonomeCutInterface:
                   self._clear_selection()
                 else:
                   self._stage_selection(coord)
-
               else:
                 print 'would play button'
 
@@ -177,6 +177,18 @@ class MonomeCutInterface:
             self.control_panel_map[coord]()
           else:
             print 'unknown button:', data
+
+  def _edit_recorded_selection(self):
+    print 'preparing to edit recorded selection'
+
+  def _recorded_selection_for_coord(self, coord):
+    retval = {}
+
+    for selection in self.recorded_selections[self.page_id].values():
+      if coord in selection['coords']:
+        retval = selection
+
+    return retval
 
   def _start_selection(self, coord):
     print 'starting selection'
@@ -216,9 +228,21 @@ class MonomeCutInterface:
     self.blink.clear()
     self.set_levels(self.current_selection['coords'], 5)
 
-  def _update_selection_with_recorded_block(self, coord):
-    self.current_selection = {
-    }
+  def _update_selection_with_prerecorded_block(self, coord):
+    print 'updating selection w/prerecorded block'
+
+    for coords in self.recorded_selections[self.page_id]:
+      if coord in self.coords_in_block(*list(itertools.chain(*coords))):
+        frames = self.recorded_selections[self.page_id][coords]['frames'][:]
+        coord_one = coords[0]
+        coord_two = coords[1]
+
+    self.current_selection['graph']['selection'] = frames
+
+    self._start_selection(coord_one)
+    self._stage_selection(coord_two)
+
+    del(self.recorded_selections[self.page_id][coords])
 
   def _record_selection(self):
     print 'recording selection'
@@ -243,7 +267,6 @@ class MonomeCutInterface:
       }
 
     self._clear_selection()
-    import pprint
     pprint.pprint(dict(self.recorded_selections))
 
   def _selection_slice_frames(self, index):
@@ -257,6 +280,14 @@ class MonomeCutInterface:
     return slice_start, slice_end
 
   def play_coord(self, data):
+    coord = tuple(data[:2])
+    selection = self._recorded_selection_for_coord(coord)
+    if selection:
+      data = selection['coords'][coord]
+      self.gtk_sound.selection.set(*data['frames'])
+      self.gtk_sound.controller.play()
+      self.gtk_sound._start = data['frames'][0]
+      self.gtk_sound._end = data['frames'][1]
     print 'would play data', data
 
   def play_button(self, data):
@@ -276,6 +307,8 @@ class MonomeCutInterface:
       self.y_size = 8
       self.playable_button_coords = self.coords_in_block(0, 7, 7, 3)
       self.page_button_coords = self.coords_in_block(0, 2, 7, 2)
+      all_button_coords = self.coords_in_block(0, 0, 7, 7)
+      self.button_states = dict([ (x, 0) for x in all_button_coords ])
 
     for x in range(len(self.page_button_coords)):
       self.recorded_selections[x] = {}
