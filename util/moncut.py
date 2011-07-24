@@ -156,7 +156,10 @@ class MonomeCutInterface:
 
       if coord in self.control_panel_map:
         return self.control_panel_map[coord](coord, state)
-      elif coord not in self.playable_button_coords:
+      elif (
+        coord not in self.playable_button_coords and
+        coord not in self.page_button_coords
+      ):
         print 'unknown button:', data
 
       if state is 1:
@@ -340,8 +343,8 @@ class MonomeCutInterface:
     if self.model == 64:
       self.x_size = 8
       self.y_size = 8
-      self.playable_button_coords = self.coords_in_block('0,7,7,3')
-      self.page_button_coords = self.coords_in_block('0,2,7,2')
+      self.playable_button_coords = self.coords_in_block('0,7,7,4')
+      self.page_button_coords = self.coords_in_block('0,3,7,3')
       all_button_coords = self.coords_in_block('0,0,7,7')
       self.button_states = dict([ (x, 0) for x in all_button_coords ])
 
