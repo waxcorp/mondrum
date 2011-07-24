@@ -5,6 +5,7 @@ import gtk
 import itertools
 import os
 import pprint
+import random
 import scalpel.gtkui
 import sys
 import threading
@@ -20,6 +21,7 @@ class GTKSound:
   def __init__(self, recv_port=8001):
     self.start_osc_server(recv_port)
     self._state = 0
+    self._iteration = 0
 
   def load_file(self, filename):
     self.filename = os.path.realpath(filename)
@@ -61,13 +63,16 @@ class GTKSound:
 
   def osc_dispatch(self, pattern, tags, data, client_address):
     if pattern == '/monome/enc/delta':
-      if self._state == 0:
-        self.graph.zoom_on(
-          self.selection.pixels()[data[0]],
-          (100 - data[1]) / 100.
-        )
+      if self._state == 1:
+        if self._iteration == 25:
+          self.graph.zoom_on(
+            self.selection.pixels()[data[0]], (100 - (data[1] * 10)) / 100.
+          )
+          self._iteration = 0
+        else:
+          self._iteration += 1
 
-      elif self._state == 1:
+      elif self._state == 0:
         start, end = self.selection.get()
         v_start, v_end = self.graph.view()
         v_width = v_end - v_start
@@ -114,6 +119,8 @@ class MonomeCutInterface:
     self.blink_thread.start()
     self.control_panel_map = {
       '0,1': self._update_zoom_state,
+      '1,0': self._zoom_out_left,
+      '0,0': self._zoom_in_left,
       '6,0': self._edit_recorded_selection,
       '7,0': self._clear_selection,
       '7,1': self._record_selection,
@@ -187,6 +194,16 @@ class MonomeCutInterface:
 
   def _update_zoom_state(self, coord, state):
     self.gtk_sound._state = state
+
+  def _zoom_out_left(self, coord, state):
+    if state:
+      pix = self.gtk_sound.selection.pixels()[0]
+      self.gtk_sound.graph.zoom_on(pix, 1.5)
+
+  def _zoom_in_left(self, coord, state):
+    if state:
+      pix = self.gtk_sound.selection.pixels()[0]
+      self.gtk_sound.graph.zoom_on(pix, 0.5)
 
   def _recorded_selection_for_coord(self, coord):
     retval = ()
