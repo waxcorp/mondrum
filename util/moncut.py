@@ -3,9 +3,8 @@ import collections
 import gobject
 import gtk
 import itertools
+import json
 import os
-import pprint
-import random
 import scalpel.gtkui
 import sys
 import threading
@@ -122,6 +121,7 @@ class MonomeCutInterface:
       '1,0': self._zoom_out_left,
       '0,0': self._zoom_in_left,
       '6,0': self._edit_recorded_selection,
+      '6,1': self._print_recorded_selections,
       '7,0': self._clear_selection,
       '7,1': self._record_selection,
     }
@@ -190,6 +190,7 @@ class MonomeCutInterface:
           self.set_page(self.page_button_coords.index(coord))
 
   def _edit_recorded_selection(self, coord=None, state=None):
+    if not state: return
     print 'preparing to edit recorded selection'
 
   def _update_zoom_state(self, coord, state):
@@ -230,6 +231,7 @@ class MonomeCutInterface:
     self.set_levels(self.current_selection['coords'], 15)
 
   def _clear_selection(self, coord=None, state=None):
+    if not state: return
     print 'clearing selection'
     self.current_selection['coord_one'] = None
     self.current_selection['coord_two'] = None
@@ -266,6 +268,7 @@ class MonomeCutInterface:
     del(self.recorded_selections[self.page_id][coords])
 
   def _record_selection(self, coord=None, state=None):
+    if not state: return
     print 'recording selection'
 
     block_coords = (
@@ -288,7 +291,10 @@ class MonomeCutInterface:
       )
 
     self._clear_selection()
-    pprint.pprint(dict(self.recorded_selections))
+
+  def _print_recorded_selections(self, coord, state):
+    if not state: return
+    print json.dumps(dict(self.recorded_selections), sort_keys=True, indent=2)
 
   def _selection_slice_frames(self, index):
     frames = self.current_selection['graph']['selection']
@@ -459,8 +465,8 @@ class MockMonome(gtk.Window):
 
 
 if __name__ == '__main__':
-  #filename = '/Users/josh/tmp/5_gongs.wav'
-  filename = '/Users/josh/tmp/cw.wav'
+  filename = '/Users/josh/tmp/5_gongs.wav'
+  #filename = '/Users/josh/tmp/cw.wav'
 
   #mock_monome = MockMonome(recv_port=17448, xmit_port=8000)
 
